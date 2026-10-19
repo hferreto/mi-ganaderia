@@ -59,7 +59,8 @@ table{width:100%;border-collapse:collapse;font-size:13.5px}
 th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
 th{color:var(--muted);font-weight:600;font-size:12px}
 .tw{overflow-x:auto}
-.tabs{display:flex;gap:6px;overflow-x:auto;margin:8px 0 12px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
+.avl{position:relative;text-decoration:none;flex:none}.avl i{position:absolute;right:-4px;bottom:-4px;font-style:normal;font-size:13px;background:var(--card);border:1px solid var(--line);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center}
 .tabs a{padding:7px 12px;border-radius:20px;background:var(--card);border:1px solid var(--line);color:var(--muted);text-decoration:none;white-space:nowrap;font-size:13.5px}
 .tabs a.on{background:var(--pri);color:#fff;border-color:var(--pri)}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px}
@@ -387,7 +388,7 @@ V.animal=(id,tab='general')=>{const a=animal(id);if(!a)return go('#/animales');c
  if(tab==='archivos')body=archivosHtml(a);
  if(tab==='finanzas'){const ms=S.movimientos.filter(m=>m.animalId===id).sort((x,y)=>y.fecha.localeCompare(x.fecha));const ing=ms.filter(m=>m.tipo==='ingreso').reduce((t,m)=>t+m.monto,0),gas=ms.filter(m=>m.tipo==='gasto').reduce((t,m)=>t+m.monto,0);body=`<div class="grid"><div class="stat"><div class="v pos">${fmtM(ing)}</div><div class="l">Ingresos</div></div><div class="stat"><div class="v neg">${fmtM(gas)}</div><div class="l">Gastos directos</div></div><div class="stat"><div class="v ${ing-gas>=0?'pos':'neg'}">${fmtM(ing-gas)}</div><div class="l">Balance</div></div></div><div class="card list">${ms.map(movHtml).join('')||'<div class="empty">Sin gastos ni ingresos asignados a este animal.</div>'}</div><a class="btn sec sm" href="#/mov/nuevo/gasto/${id}">➖ Agregar gasto de este animal</a>`}
  const acc=Object.entries(TIPOS).filter(([k,t])=>(!t.sexo||t.sexo===a.sexo)&&a.estado==='activo');
- $('#app').innerHTML=`<div class="card"><div class="row">${avHtml(a,52)}<div class="sp"><h2 style="margin:0">${esc(a.codigo)} ${esc(a.nombre||'')}</h2><div class="sub">${et.n} · ${edadTxt(a.fechaNac)} · ${esc(a.raza||'')}</div></div><a class="btn sm sec" href="#/animalform/${id}">Editar</a></div>
+ $('#app').innerHTML=`<div class="card"><div class="row"><a class="avl" href="#/animal/${id}/archivos" title="Fotos">${avHtml(a,60)}<i>📷</i></a><div class="sp"><h2 style="margin:0">${esc(a.codigo)} ${esc(a.nombre||'')}</h2><div class="sub">${et.n} · ${edadTxt(a.fechaNac)} · ${esc(a.raza||'')}</div></div><a class="btn sm sec" href="#/animalform/${id}">Editar</a></div>
  <div style="margin-top:8px">${a.estado!=='activo'?`<span class="tag b">${a.estado==='vendido'?'Vendido':'Muerto'}</span>`:''}${a.sexo==='H'&&r.estado?`<span class="tag ${r.estado==='Preñada'?'':'g'}">${r.estado}</span>`:''}${r.lactando?'<span class="tag i">En ordeño</span>':''}${s.map(x=>`<span class="tag ${x.k==='mast'?'b':'w'}">${esc(x.txt)}</span>`).join('')}</div></div>
  ${acc.length?`<h3>Registrar</h3><div class="acts">${acc.map(([k,t])=>`<a class="btn sec sm" href="#/evento/${id}/${k}">${t.ic} ${t.n}</a>`).join('')}</div>`:''}
  <div class="tabs">${T('general','General')}${T('repro','Reproducción')}${T('prod','Producción')}${T('sanidad','Sanidad')}${T('archivos','📷 Fotos y docs')}${T('finanzas','💰 Finanzas')}${T('historial','Historial')}</div>${body}
