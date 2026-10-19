@@ -150,7 +150,7 @@ const TIPOS={
  leche:{n:'Leche',ic:'🥛',sexo:'H',c:[['manana','Mañana (L)','number'],['tarde','Tarde (L)','number']]},
  celo:{n:'Celo',ic:'💗',sexo:'H',c:[]},
  servicio:{n:'Servicio / IA',ic:'🧬',sexo:'H',c:[['metodo','Método','select',['Monta natural','Inseminación artificial','Transferencia de embriones']],['toro','Toro o pajilla','text'],['costo','Costo (opcional)','number']]},
- chequeo:{n:'Chequeo preñez',ic:'🩺',sexo:'H',c:[['resultado','Resultado','select',['Preñada','Vacía']],['diasG','Días de gestación estimados (si no hay servicio)','number']]},
+ chequeo:{n:'Chequeo preñez',ic:'🩺',sexo:'H',c:[['resultado','Resultado','select',['Preñada','Vacía']],['mesesG','Meses de preñez (aprox., si no hay servicio registrado)','number'],['partoProb','Fecha probable de parto (si la sabés)','date']]},
  parto:{n:'Parto',ic:'🍼',sexo:'H',c:[['sexoCria','Sexo de la cría','select',['Hembra','Macho','Sin cría viva']],['codigoCria','Código de la cría (se crea el animal)','text'],['pesoCria','Peso al nacer (kg)','number']]},
  aborto:{n:'Aborto',ic:'⚠️',sexo:'H',c:[]},
  secado:{n:'Secado',ic:'⏸️',sexo:'H',c:[['producto','Tratamiento de secado','text']]},
@@ -262,7 +262,7 @@ function repro(a){
  for(const e of evDe(a.id)){const d=e.datos||{};
   if(e.tipo==='celo')r.ultCelo=e.fecha;
   else if(e.tipo==='servicio'){r.ultServ=e.fecha;r.estado='Servida';r.concepcion=e.fecha;r.chequeado=false}
-  else if(e.tipo==='chequeo'){r.chequeado=true;if(d.resultado==='Preñada'){r.estado='Preñada';if(!r.concepcion)r.concepcion=d.diasG?addDias(e.fecha,-Number(d.diasG)):null}else{r.estado='Vacía';r.concepcion=null;r.ultServ=null}}
+  else if(e.tipo==='chequeo'){r.chequeado=true;if(d.resultado==='Preñada'){r.estado='Preñada';if(d.partoProb)r.concepcion=addDias(d.partoProb,-g);else if(Number(d.mesesG)>0)r.concepcion=addDias(e.fecha,-Math.round(Number(d.mesesG)*30.44));else if(!r.concepcion)r.concepcion=d.diasG?addDias(e.fecha,-Number(d.diasG)):null}else{r.estado='Vacía';r.concepcion=null;r.ultServ=null}}
   else if(e.tipo==='parto'){r.partos++;r.ultParto=e.fecha;r.estado='Vacía';r.concepcion=null;r.ultServ=null;r.lactando=true;r.chequeado=false}
   else if(e.tipo==='aborto'){r.estado='Vacía';r.concepcion=null;r.ultServ=null}
   else if(e.tipo==='secado')r.lactando=false;}
@@ -312,6 +312,7 @@ const AG={filtro:'',dia:null};
 function agendaAuto(){const c=S.config,t=hoy(),out=[];const add=o=>out.push(Object.assign({auto:true},o));
  for(const a of animalesF()){const r=repro(a),et=etapa(a),esp=ESPECIES[a.especie]||ESPECIES.bovino,ev=evDe(a.id);
   if(a.sexo==='H'){
+   if(r.estado==='Preñada'&&!r.partoEsp)add({a,fecha:t,ic:'🍼',cat:'repro',t:'Preñada sin fecha de parto',d:'Registrá un chequeo con los meses de preñez o la fecha probable de parto',href:`#/evento/${a.id}/chequeo`,btn:'Registrar chequeo'});
    if(r.partoEsp)add({a,fecha:r.partoEsp,ic:'🍼',cat:'repro',t:'Parto esperado',d:r.estado==='Preñada'?'Preñez confirmada':'Según el servicio; falta confirmar preñez',href:`#/evento/${a.id}/parto`,btn:'Registrar parto'});
    if(r.partoEsp&&r.estado==='Preñada'&&r.lactando)add({a,fecha:addDias(r.partoEsp,-c.secarAntesParto),ic:'⏸️',cat:'repro',t:'Secar',d:`${c.secarAntesParto} días antes del parto`,href:`#/evento/${a.id}/secado`,btn:'Registrar secado'});
    if(r.estado==='Servida'&&r.ultServ){const hasta=addDias(r.ultServ,c.celoHasta);

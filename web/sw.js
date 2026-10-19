@@ -1,5 +1,5 @@
 /* Mi Ganado · service worker: guarda la app para usarla sin internet */
-const VERSION = 'mi-ganado-v4-1';
+const VERSION = 'mi-ganado-v4-2';
 const ARCHIVOS = ['./', 'index.html', 'supabase.js', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 
