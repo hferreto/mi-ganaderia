@@ -1,0 +1,12 @@
+# Netlify publica solo la carpeta web/
+[build]
+  publish = "web"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
