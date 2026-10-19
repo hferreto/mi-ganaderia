@@ -77,6 +77,21 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 .mi{display:grid;grid-template-columns:1fr 90px 90px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
 .mi.one{grid-template-columns:1fr 110px}
 .muted{color:var(--muted)}
+.fotos{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.fotos .ph{aspect-ratio:1;border-radius:10px;background:var(--line) center/cover no-repeat;border:0;cursor:pointer;position:relative;padding:0}
+.fotos .ph b{position:absolute;top:4px;left:4px;font-size:14px}
+.av.img{background-size:cover;background-position:center;color:transparent}
+.ov{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.92);display:flex;flex-direction:column}
+.ov img{flex:1;min-height:0;object-fit:contain;width:100%}
+.ov .row{padding:10px 12px calc(10px + env(safe-area-inset-bottom));justify-content:center}
+.hb{display:flex;align-items:center;gap:8px;margin:6px 0}
+.hb .n{width:42%;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hb .b{flex:1;height:14px;background:var(--line);border-radius:7px;overflow:hidden}
+.hb .b div{height:100%;background:var(--pri);border-radius:7px}
+.hb .v{font-size:12.5px;color:var(--muted);min-width:86px;text-align:right}
+.pos{color:var(--pri)}.neg{color:var(--bad)}
+.upl{position:relative;overflow:hidden}.upl input{position:absolute;inset:0;opacity:0;cursor:pointer}
+nav a{font-size:10.5px}
 </style>
 </head>
 <body>
@@ -121,14 +136,14 @@ const TIPOS={
  peso:{n:'Pesaje',ic:'⚖️',c:[['valor','Peso (kg)','number']]},
  leche:{n:'Leche',ic:'🥛',sexo:'H',c:[['manana','Mañana (L)','number'],['tarde','Tarde (L)','number']]},
  celo:{n:'Celo',ic:'💗',sexo:'H',c:[]},
- servicio:{n:'Servicio / IA',ic:'🧬',sexo:'H',c:[['metodo','Método','select',['Monta natural','Inseminación artificial','Transferencia de embriones']],['toro','Toro o pajilla','text']]},
+ servicio:{n:'Servicio / IA',ic:'🧬',sexo:'H',c:[['metodo','Método','select',['Monta natural','Inseminación artificial','Transferencia de embriones']],['toro','Toro o pajilla','text'],['costo','Costo (opcional)','number']]},
  chequeo:{n:'Chequeo preñez',ic:'🩺',sexo:'H',c:[['resultado','Resultado','select',['Preñada','Vacía']],['diasG','Días de gestación estimados (si no hay servicio)','number']]},
  parto:{n:'Parto',ic:'🍼',sexo:'H',c:[['sexoCria','Sexo de la cría','select',['Hembra','Macho','Sin cría viva']],['codigoCria','Código de la cría (se crea el animal)','text'],['pesoCria','Peso al nacer (kg)','number']]},
  aborto:{n:'Aborto',ic:'⚠️',sexo:'H',c:[]},
  secado:{n:'Secado',ic:'⏸️',sexo:'H',c:[['producto','Tratamiento de secado','text']]},
- vacuna:{n:'Vacuna',ic:'💉',c:[['producto','Vacuna','select',VACUNAS],['dosis','Dosis','text'],['proxima','Próxima dosis','date']]},
- desparasitacion:{n:'Desparasitación',ic:'🪱',c:[['producto','Producto','text'],['proxima','Próxima aplicación','date']]},
- tratamiento:{n:'Tratamiento',ic:'💊',c:[['tipoT','Tipo','select',TIPOS_TRAT],['diagnostico','Diagnóstico','text'],['producto','Medicamento','text'],['duracion','Días de tratamiento','number'],['retiro','Días de retiro leche/carne','number']]},
+ vacuna:{n:'Vacuna',ic:'💉',c:[['producto','Vacuna','select',VACUNAS],['dosis','Dosis','text'],['proxima','Próxima dosis','date'],['costo','Costo (opcional)','number']]},
+ desparasitacion:{n:'Desparasitación',ic:'🪱',c:[['producto','Producto','text'],['proxima','Próxima aplicación','date'],['costo','Costo (opcional)','number']]},
+ tratamiento:{n:'Tratamiento',ic:'💊',c:[['tipoT','Tipo','select',TIPOS_TRAT],['diagnostico','Diagnóstico','text'],['producto','Medicamento','text'],['duracion','Días de tratamiento','number'],['retiro','Días de retiro leche/carne','number'],['costo','Costo (opcional)','number']]},
  mastitis:{n:'Mastitis',ic:'🔴',sexo:'H',c:[['severidad','Severidad','select',SEVERIDAD],['cuartos','Cuartos afectados','text']]},
  lote:{n:'Cambio de lote',ic:'🔀',c:[['destino','Lote o potrero destino','lote']]},
  venta:{n:'Venta',ic:'💰',c:[['comprador','Comprador','text'],['peso','Peso (kg)','number'],['precio','Precio total','number']]},
@@ -137,16 +152,16 @@ const TIPOS={
 };
 
 /* ================= Base de datos (IndexedDB) ================= */
-const STORES=['fincas','lotes','animales','eventos','config','tombs'];
-const DATA=['fincas','lotes','animales','eventos'];
-let db, S={fincas:[],lotes:[],animales:[],eventos:[],config:{}};
-const CFG0={fincaActual:null,secado:305,esperaVol:60,alertaParto:15,diasChequeo:45,celoDesde:18,celoHasta:24,secarAntesParto:60};
+const STORES=['fincas','lotes','animales','eventos','archivos','movimientos','config','tombs','blobs'];
+const DATA=['fincas','lotes','animales','eventos','archivos','movimientos'];
+let db, S={fincas:[],lotes:[],animales:[],eventos:[],archivos:[],movimientos:[],config:{}};
+const CFG0={fincaActual:null,moneda:'₡',secado:305,esperaVol:60,alertaParto:15,diasChequeo:45,celoDesde:18,celoHasta:24,secarAntesParto:60};
 /* N = configuración de la nube (solo de este dispositivo, no se sincroniza) */
 const NUBE_URL='https://ioljiwrrypodbiqeamzi.supabase.co', NUBE_KEY='sb_publishable__szpsGCEHdHGlhHuUadErw_IBU0-Rrq';
 let N={id:'nube',url:NUBE_URL,key:NUBE_KEY,userId:null,email:'',pull:{},cfgDirty:false,ultimaSync:null};
-function openDB(){return new Promise((ok,ko)=>{const r=indexedDB.open('mi-ganado',2);r.onupgradeneeded=()=>{STORES.forEach(s=>{if(!r.result.objectStoreNames.contains(s))r.result.createObjectStore(s,{keyPath:'id'})})};r.onsuccess=()=>ok(r.result);r.onerror=()=>ko(r.error)})}
+function openDB(){return new Promise((ok,ko)=>{const r=indexedDB.open('mi-ganado',3);r.onupgradeneeded=()=>{STORES.forEach(s=>{if(!r.result.objectStoreNames.contains(s))r.result.createObjectStore(s,{keyPath:'id'})})};r.onsuccess=()=>ok(r.result);r.onerror=()=>ko(r.error)})}
 function tx(store,mode,fn){return new Promise((ok,ko)=>{const t=db.transaction(store,mode);const o=t.objectStore(store);const res=fn(o);t.oncomplete=()=>ok(res&&res.result);t.onerror=()=>ko(t.error)})}
-async function loadAll(){for(const s of STORES){if(s==='tombs')continue;const rows=await tx(s,'readonly',o=>o.getAll());if(s==='config'){const c=rows.find(r=>r.id==='cfg');S.config=Object.assign({},CFG0,c||{});delete S.config.id;const n=rows.find(r=>r.id==='nube');if(n)N=Object.assign(N,n)}else S[s]=rows||[]}}
+async function loadAll(){for(const s of STORES){if(s==='tombs'||s==='blobs')continue;const rows=await tx(s,'readonly',o=>o.getAll());if(s==='config'){const c=rows.find(r=>r.id==='cfg');S.config=Object.assign({},CFG0,c||{});delete S.config.id;const n=rows.find(r=>r.id==='nube');if(n)N=Object.assign(N,n)}else S[s]=rows||[]}}
 /* put: guarda y marca el registro como pendiente de subir (_s=0) */
 async function put(store,obj){obj.mod=Date.now();obj._s=0;await putRaw(store,obj);Sync.pronto()}
 async function putRaw(store,obj){await tx(store,'readwrite',o=>o.put(obj));const arr=S[store];const i=arr.findIndex(x=>x.id===obj.id);if(i>=0)arr[i]=obj;else arr.push(obj)}
@@ -154,7 +169,7 @@ async function del(store,id){await delRaw(store,id);if(N.userId)await tx('tombs'
 async function delRaw(store,id){await tx(store,'readwrite',o=>o.delete(id));S[store]=S[store].filter(x=>x.id!==id)}
 async function saveCfg(){await tx('config','readwrite',o=>o.put(Object.assign({},S.config,{id:'cfg'})));N.cfgDirty=true;N.cfgMod=Date.now();await saveN();Sync.pronto()}
 async function saveN(){await tx('config','readwrite',o=>o.put(Object.assign({},N,{id:'nube'})))}
-async function borrarLocal(){for(const s of STORES)await tx(s,'readwrite',o=>o.clear());S={fincas:[],lotes:[],animales:[],eventos:[],config:Object.assign({},CFG0)}}
+async function borrarLocal(){for(const s of STORES)await tx(s,'readwrite',o=>o.clear());S={fincas:[],lotes:[],animales:[],eventos:[],archivos:[],movimientos:[],config:Object.assign({},CFG0)};for(const k in URLS){URL.revokeObjectURL(URLS[k]);delete URLS[k]}}
 
 /* ================= Sincronización con Supabase ================= */
 const SB_LIB='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js';
@@ -162,10 +177,12 @@ const MAP={
  fincas:[['nombre'],['proposito'],['especie'],['ubicacion'],['areaTotal','area_total','n'],['areaGanado','area_ganado','n']],
  lotes:[['fincaId','finca_id'],['nombre'],['tipo'],['area','area','n']],
  animales:[['fincaId','finca_id'],['codigo'],['nombre'],['especie'],['sexo'],['fechaNac','fecha_nac','d'],['raza'],['proposito'],['loteId','lote_id'],['madreId','madre_id'],['padreId','padre_id'],['padreTxt','padre_txt'],['dieta'],['origen'],['fechaIngreso','fecha_ingreso','d'],['chip'],['nfc'],['qr'],['marca'],['notas'],['estado'],['fechaSalida','fecha_salida','d']],
- eventos:[['animalId','animal_id'],['fincaId','finca_id'],['tipo'],['fecha','fecha','d'],['datos','datos','j'],['notas']]
+ eventos:[['animalId','animal_id'],['fincaId','finca_id'],['tipo'],['fecha','fecha','d'],['datos','datos','j'],['notas']],
+ archivos:[['fincaId','finca_id'],['animalId','animal_id'],['tipo'],['nombre'],['ruta'],['mime'],['tamano','tamano','n'],['fecha','fecha','d'],['notas'],['portada','portada','b']],
+ movimientos:[['fincaId','finca_id'],['tipo'],['categoria'],['fecha','fecha','d'],['monto','monto','n'],['descripcion'],['cantidad','cantidad','n'],['unidad'],['precioUnit','precio_unit','n'],['animalId','animal_id'],['loteId','lote_id'],['tercero'],['eventoId','evento_id']]
 };
-function toRow(s,o){const r={id:o.id,mod:o.mod||Date.now(),borrado:false};for(const [k,c=k,t] of MAP[s]){let v=o[k];if(v===''||v==null)v=t==='j'?{}:null;else if(t==='n')v=isNaN(Number(v))?null:Number(v);r[c]=v}return r}
-function fromRow(s,r){const o={id:r.id,mod:Number(r.mod)||0,_s:1};for(const [k,c=k,t] of MAP[s]){const v=r[c];o[k]=v==null?(t==='j'?{}:''):t==='n'?Number(v):v}return o}
+function toRow(s,o){const r={id:o.id,mod:o.mod||Date.now(),borrado:false};for(const [k,c=k,t] of MAP[s]){let v=o[k];if(t==='b')v=!!v;else if(v===''||v==null)v=t==='j'?{}:null;else if(t==='n')v=isNaN(Number(v))?null:Number(v);r[c]=v}return r}
+function fromRow(s,r){const o={id:r.id,mod:Number(r.mod)||0,_s:1};for(const [k,c=k,t] of MAP[s]){const v=r[c];o[k]=t==='b'?!!v:v==null?(t==='j'?{}:''):t==='n'?Number(v):v}return o}
 const Sync={sb:null,estado:'local',corriendo:false,timer:null,error:'',
  activa(){return !!(N.url&&N.key)},
  cargarLib(){if(window.supabase)return Promise.resolve(true);const una=src=>new Promise(ok=>{const s=document.createElement('script');s.src=src;s.onload=()=>ok(!!window.supabase);s.onerror=()=>{s.remove();ok(false)};document.head.appendChild(s)});
@@ -179,15 +196,17 @@ const Sync={sb:null,estado:'local',corriendo:false,timer:null,error:'',
  async ahora(manual){if(this.corriendo||!N.userId)return;if(!navigator.onLine){this.estado='off';this.pinta();if(manual)toast('Sin conexión: se sincronizará al volver la señal');return}
   this.corriendo=true;this.pinta();let cambios=false;
   try{const sb=await this.cliente();if(!sb)throw new Error(this.error||'No se pudo cargar Supabase');const ses=await this.sesion();if(!ses)throw new Error('Sesión vencida: vuelve a iniciar sesión');
+   /* 0. Subir fotos y documentos pendientes */
+   await subirArchivos(sb);
    /* 1. Subir cambios locales */
    for(const s of DATA){const pend=S[s].filter(o=>o._s!==1);for(let i=0;i<pend.length;i+=400){const lote=pend.slice(i,i+400);const filas=lote.map(o=>toRow(s,o));const {error}=await sb.from(s).upsert(filas,{onConflict:'id'});if(error)throw new Error(s+': '+error.message);for(const f of filas){const act=S[s].find(x=>x.id===f.id);if(act&&act.mod===f.mod){act._s=1;await tx(s,'readwrite',x=>x.put(act))}}}}
-   const tombs=await tx('tombs','readonly',o=>o.getAll());for(const s of DATA){const ids=tombs.filter(t=>t.store===s).map(t=>t.rid);for(let i=0;i<ids.length;i+=200){const {error}=await sb.from(s).update({borrado:true,mod:Date.now()}).in('id',ids.slice(i,i+200));if(error)throw new Error(s+': '+error.message)}}
+   const tombs=await tx('tombs','readonly',o=>o.getAll());for(const s of DATA){const ids=tombs.filter(t=>t.store===s).map(t=>t.rid);for(let i=0;i<ids.length;i+=200){if(s==='archivos'){const {data:rs}=await sb.from('archivos').select('ruta').in('id',ids.slice(i,i+200));const rutas=(rs||[]).map(r=>r.ruta).filter(Boolean);if(rutas.length)await sb.storage.from('archivos').remove(rutas)}const {error}=await sb.from(s).update({borrado:true,mod:Date.now()}).in('id',ids.slice(i,i+200));if(error)throw new Error(s+': '+error.message)}}
    for(const t of tombs)await tx('tombs','readwrite',o=>o.delete(t.id));
    if(N.cfgDirty){const {id,...datos}=S.config;const {error}=await sb.from('config').upsert({user_id:N.userId,datos,mod:N.cfgMod||Date.now()},{onConflict:'user_id'});if(error)throw new Error('config: '+error.message);N.cfgDirty=false;N.cfgModRemoto=N.cfgMod||Date.now()}
    /* 2. Bajar cambios de la nube */
    for(const s of DATA){const desde=N.pull[s]||'1970-01-01T00:00:00Z';let off=0,max=desde;for(;;){const {data,error}=await sb.from(s).select('*').gt('updated_at',desde).order('updated_at').order('id').range(off,off+999);if(error)throw new Error(s+': '+error.message);
      for(const r of data){if(r.updated_at>max)max=r.updated_at;const loc=S[s].find(x=>x.id===r.id);
-      if(r.borrado){if(loc){await delRaw(s,r.id);cambios=true}continue}
+      if(r.borrado){if(loc){await delRaw(s,r.id);if(s==='archivos')await borrarBlob(r.id);cambios=true}continue}
       if(loc&&loc._s!==1&&(loc.mod||0)>(Number(r.mod)||0))continue;
       await putRaw(s,fromRow(s,r));cambios=true}
      if(data.length<1000)break;off+=1000}N.pull[s]=max}
@@ -264,7 +283,7 @@ function alertas(){const c=S.config,t=hoy(),out=[];
  return out.sort((x,y)=>y.p-x.p)}
 
 /* ================= Render base ================= */
-const NAV=[['inicio','🏠','Inicio'],['animales','🐄','Animales'],['masivo','📋','Registro'],['alertas','🔔','Alertas'],['mas','⚙️','Más']];
+const NAV=[['inicio','🏠','Inicio'],['animales','🐄','Animales'],['masivo','📋','Registro'],['finanzas','💰','Finanzas'],['alertas','🔔','Alertas'],['mas','⚙️','Más']];
 function setNav(r){const n=alertas().length;$('#nav').innerHTML=NAV.map(([k,i,l])=>`<a href="#/${k}" class="${r===k?'on':''}"><b>${i}</b>${l}${k==='alertas'&&n?`<span class="dot">${n}</span>`:''}</a>`).join('')}
 function setFincas(){const s=$('#fsel');s.innerHTML=S.fincas.map(f=>`<option value="${f.id}" ${f.id===S.config.fincaActual?'selected':''}>${esc(f.nombre)}</option>`).join('');s.style.display=S.fincas.length?'':'none'}
 $('#fsel').onchange=async e=>{S.config.fincaActual=e.target.value;await saveCfg();route()};
@@ -274,7 +293,7 @@ function route(){const h=location.hash.replace(/^#\/?/,'')||'inicio';const [r,..
  if(Sync.necesitaLogin&&r!=='nube'){return V.login()}
  if(r==='nube'){setNav('mas');$('#ttl').textContent='Nube';return V.nube()}
  if(!F()&&r!=='finca'){return V.bienvenida()}
- const fn=V[r]||V.inicio;setNav({animal:'animales',animalform:'animales',evento:'animales'}[r]||r);$('#ttl').textContent=F()?F().nombre:'Mi Ganado';fn(...p.map(decodeURIComponent));window.scrollTo(0,0)}
+ const fn=V[r]||V.inicio;setNav({animal:'animales',animalform:'animales',evento:'animales',mov:'finanzas',archivo:'animales'}[r]||r);$('#ttl').textContent=F()?F().nombre:'Mi Ganado';fn(...p.map(decodeURIComponent));window.scrollTo(0,0)}
 window.onhashchange=route;
 const go=h=>location.hash=h;
 function selOpts(arr,val,vacia){return(vacia?`<option value="">${vacia}</option>`:'')+arr.map(o=>{const [v,l]=Array.isArray(o)?o:[o,o];return`<option value="${esc(v)}" ${String(v)===String(val??'')?'selected':''}>${esc(l)}</option>`}).join('')}
@@ -299,6 +318,7 @@ V.inicio=()=>{const an=animalesF(),t=hoy();const H=an.filter(a=>a.sexo==='H'),M=
   <div class="stat"><div class="v">${al.length}</div><div class="l">Alertas</div></div></div>
  <div class="card"><div class="row"><b>Producción de leche · 14 días</b><span class="sp"></span><a class="btn sm sec" href="#/masivo/leche">Registrar</a></div>
   <div class="bars" style="margin-bottom:20px">${dia.map(d=>`<div title="${fmtF(d.f)}: ${num(d.v)} L" style="height:${d.v/mx*100}%"><span>${D(d.f).getDate()}</span></div>`).join('')}</div></div>
+ ${finResumenCard()}
  <div class="card"><b>Animales por etapa</b><div style="margin-top:8px">${Object.keys(porEt).length?ETAPAS.filter(k=>porEt[k]).map(k=>`<span class="tag g">${k}: ${porEt[k]}</span>`).join(''):'<span class="muted">Aún no hay animales.</span>'}</div></div>
  <div class="card"><div class="row"><b>Alertas principales</b><span class="sp"></span><a href="#/alertas" class="btn sm sec">Ver todas</a></div><div style="margin-top:10px">${al.length?al.slice(0,5).map(alHtml).join(''):'<div class="muted">Sin alertas pendientes. 👌</div>'}</div></div>
  <div class="acts"><a class="btn" href="#/animalform">➕ Nuevo animal</a><a class="btn sec" href="#/masivo/leche">🥛 Leche</a><a class="btn sec" href="#/masivo/peso">⚖️ Pesaje</a><a class="btn sec" href="#/informes">📊 Informes</a></div>`};
@@ -316,9 +336,9 @@ V.animales=()=>{const ls=lotesF();
  const pinta=()=>{const q=filtro.q.toLowerCase();let an=animalesF(true).filter(a=>filtro.estado==='todos'||a.estado===filtro.estado);
   an=an.filter(a=>(!filtro.sexo||a.sexo===filtro.sexo)&&(!filtro.lote||a.loteId===filtro.lote)&&(filtro.etapa===''||etapa(a).i==filtro.etapa)&&(!q||[a.codigo,a.nombre,a.chip,a.nfc,a.qr,a.raza].some(v=>(v||'').toLowerCase().includes(q))));
   an.sort((x,y)=>x.codigo.localeCompare(y.codigo,'es',{numeric:true}));
-  $('#lst').innerHTML=an.length?`<div class="sub" style="margin-bottom:4px">${an.length} animales</div>`+an.map(a=>{const r=repro(a),et=etapa(a),s=salud(a);return`<a class="it" href="#/animal/${a.id}"><div class="av ${a.sexo}">${a.sexo}</div><div class="sp"><b>${esc(a.codigo)}</b> ${esc(a.nombre||'')}<div class="sub">${et.n} · ${esc(a.raza||'Sin raza')} · ${esc(loteN(a.loteId))}</div><div>${a.estado!=='activo'?`<span class="tag g">${a.estado}</span>`:''}${r.estado==='Preñada'?'<span class="tag">Preñada</span>':r.estado==='Servida'?'<span class="tag i">Servida</span>':''}${r.lactando?'<span class="tag i">En ordeño</span>':''}${s.map(x=>`<span class="tag ${x.k==='mast'?'b':'w'}">${esc(x.txt)}</span>`).join('')}</div></div></a>`}).join(''):'<div class="empty">No hay animales con ese filtro.</div>'};
+  $('#lst').innerHTML=an.length?`<div class="sub" style="margin-bottom:4px">${an.length} animales</div>`+an.map(a=>{const r=repro(a),et=etapa(a),s=salud(a);return`<a class="it" href="#/animal/${a.id}">${avHtml(a)}<div class="sp"><b>${esc(a.codigo)}</b> ${esc(a.nombre||'')}<div class="sub">${et.n} · ${esc(a.raza||'Sin raza')} · ${esc(loteN(a.loteId))}</div><div>${a.estado!=='activo'?`<span class="tag g">${a.estado}</span>`:''}${r.estado==='Preñada'?'<span class="tag">Preñada</span>':r.estado==='Servida'?'<span class="tag i">Servida</span>':''}${r.lactando?'<span class="tag i">En ordeño</span>':''}${s.map(x=>`<span class="tag ${x.k==='mast'?'b':'w'}">${esc(x.txt)}</span>`).join('')}</div></div></a>`}).join(''):'<div class="empty">No hay animales con ese filtro.</div>'};
  $('#q').oninput=e=>{filtro.q=e.target.value;pinta()};
- [['#fs','sexo'],['#fl','lote'],['#fe','etapa'],['#fx','estado']].forEach(([s,k])=>$(s).onchange=e=>{filtro[k]=e.target.value;pinta()});pinta()};
+ [['#fs','sexo'],['#fl','lote'],['#fe','etapa'],['#fx','estado']].forEach(([s,k])=>$(s).onchange=e=>{filtro[k]=e.target.value;pinta();hidratar(true)});pinta();hidratar(true)};
 
 V.animalform=(id)=>{const a=id?animal(id):{especie:F().especie||'bovino',sexo:'H',estado:'activo',proposito:F().proposito};const ls=lotesF();
  const madres=animalesF(true).filter(x=>x.sexo==='H'&&x.id!==a.id),padres=animalesF(true).filter(x=>x.sexo==='M'&&x.id!==a.id);
@@ -335,7 +355,8 @@ V.animalform=(id)=>{const a=id?animal(id):{especie:F().especie||'bovino',sexo:'H
  <div><label>Padre / pajilla (externo)</label><input name="padreTxt" value="${esc(a.padreTxt)}"></div>
  <div><label>Dieta</label><select name="dieta">${selOpts(DIETAS,a.dieta,'—')}</select></div>
  <div><label>Origen</label><select name="origen">${selOpts(['Nacido en la finca','Comprado'],a.origen,'—')}</select></div>
- <div><label>Fecha de ingreso / compra</label><input type="date" name="fechaIngreso" value="${esc(a.fechaIngreso)}"></div></div>
+ <div><label>Fecha de ingreso / compra</label><input type="date" name="fechaIngreso" value="${esc(a.fechaIngreso)}"></div>
+ ${id?'':`<div><label>Precio de compra (opcional)</label><input type="number" step="any" min="0" name="precioCompra" placeholder="Se anota como gasto"></div><div><label>Vendedor (opcional)</label><input name="vendedor"></div>`}</div>
  <h3>Identificación</h3><div class="f2"><div><label>Chip RFID</label><input name="chip" value="${esc(a.chip)}"></div><div><label>Tag NFC</label><input name="nfc" value="${esc(a.nfc)}"></div><div><label>Código QR / barras</label><input name="qr" value="${esc(a.qr)}"></div><div><label>Marca / hierro / arete</label><input name="marca" value="${esc(a.marca)}"></div></div>
  ${id?'':`<h3>Datos iniciales (opcional)</h3><div class="f2"><div><label>Peso actual (kg)</label><input type="number" step="any" name="pesoIni"></div><div><label>Estado reproductivo</label><select name="reproIni">${selOpts([['','—'],['prenada','Preñada'],['lactando','En ordeño']],'')}</select></div><div><label>Fecha del último parto</label><input type="date" name="partoIni"></div><div><label>Fecha del último servicio</label><input type="date" name="servIni"></div></div>`}
  <label>Notas</label><textarea name="notas" rows="2">${esc(a.notas)}</textarea>
@@ -343,13 +364,14 @@ V.animalform=(id)=>{const a=id?animal(id):{especie:F().especie||'bovino',sexo:'H
  $('#fa').onsubmit=async ev=>{ev.preventDefault();const d=formData(ev.target);
   const dup=S.animales.find(x=>x.fincaId===S.config.fincaActual&&x.id!==a.id&&x.codigo.toLowerCase()===d.codigo.toLowerCase());if(dup)return toast('Ya existe un animal con ese código');
   for(const k of['chip','nfc','qr'])if(d[k]&&S.animales.some(x=>x.id!==a.id&&x[k]===d[k]))return toast('Ese código de '+k.toUpperCase()+' ya está en otro animal');
-  const {pesoIni,reproIni,partoIni,servIni,...rest}=d;const obj=Object.assign({},a,rest,{id:a.id||uid(),fincaId:a.fincaId||S.config.fincaActual,estado:a.estado||'activo'});
+  const {pesoIni,reproIni,partoIni,servIni,precioCompra,vendedor,...rest}=d;const obj=Object.assign({},a,rest,{id:a.id||uid(),fincaId:a.fincaId||S.config.fincaActual,estado:a.estado||'activo'});
   await put('animales',obj);const f=hoy();
   if(!id){if(pesoIni)await put('eventos',{id:uid(),animalId:obj.id,fincaId:obj.fincaId,tipo:'peso',fecha:f,datos:{valor:Number(pesoIni)},notas:'Peso inicial'});
    if(obj.sexo==='H'){if(partoIni)await put('eventos',{id:uid(),animalId:obj.id,fincaId:obj.fincaId,tipo:'parto',fecha:partoIni,datos:{sexoCria:'Sin cría viva'},notas:'Registro inicial'});
     if(reproIni==='lactando'&&!partoIni)await put('eventos',{id:uid(),animalId:obj.id,fincaId:obj.fincaId,tipo:'parto',fecha:f,datos:{sexoCria:'Sin cría viva'},notas:'Registro inicial (fecha desconocida)'});
     if(servIni)await put('eventos',{id:uid(),animalId:obj.id,fincaId:obj.fincaId,tipo:'servicio',fecha:servIni,datos:{metodo:'Monta natural'},notas:'Registro inicial'});
     if(reproIni==='prenada')await put('eventos',{id:uid(),animalId:obj.id,fincaId:obj.fincaId,tipo:'chequeo',fecha:f,datos:{resultado:'Preñada'},notas:'Registro inicial'});}}
+  if(!id&&Number(precioCompra)>0)await put('movimientos',{id:uid(),fincaId:obj.fincaId,tipo:'gasto',categoria:'Compra de ganado',fecha:obj.fechaIngreso||f,monto:Number(precioCompra),cantidad:1,unidad:'animal',descripcion:'Compra de '+nombreA(obj),tercero:vendedor||'',animalId:obj.id,loteId:obj.loteId||''});
   toast('Animal guardado');go('#/animal/'+obj.id)}};
 
 V.animal=(id,tab='general')=>{const a=animal(id);if(!a)return go('#/animales');const r=repro(a),et=etapa(a),s=salud(a),ev=evDe(id),pk=ultPeso(a);
@@ -362,15 +384,18 @@ V.animal=(id,tab='general')=>{const a=animal(id);if(!a)return go('#/animales');c
   body=`<div class="grid">${a.sexo==='H'?`<div class="stat"><div class="v">${r.diasLact??'—'}</div><div class="l">Días de lactancia</div></div><div class="stat"><div class="v">${ult30.length?num(ult30.reduce((s,e)=>s+litros(e),0)/ult30.length):'—'}</div><div class="l">Promedio L/día (30 d)</div></div>`:''}<div class="stat"><div class="v">${pk?num(pk.kg):'—'}</div><div class="l">Último peso (kg)</div></div><div class="stat"><div class="v">${gananciaDiaria(a)!=null?num(gananciaDiaria(a)*1000,0)+' g':'—'}</div><div class="l">Ganancia diaria</div></div></div>`+histHtml(ev.filter(e=>e.tipo==='leche'||e.tipo==='peso'))}
  if(tab==='sanidad')body=`<div class="card">${s.length?s.map(x=>`<span class="tag ${x.k==='mast'?'b':'w'}">${esc(x.txt)}</span>`).join(''):'<span class="tag">Sin tratamientos activos</span>'}</div>`+histHtml(ev.filter(e=>['vacuna','desparasitacion','tratamiento','mastitis'].includes(e.tipo)));
  if(tab==='historial')body=histHtml(ev);
+ if(tab==='archivos')body=archivosHtml(a);
+ if(tab==='finanzas'){const ms=S.movimientos.filter(m=>m.animalId===id).sort((x,y)=>y.fecha.localeCompare(x.fecha));const ing=ms.filter(m=>m.tipo==='ingreso').reduce((t,m)=>t+m.monto,0),gas=ms.filter(m=>m.tipo==='gasto').reduce((t,m)=>t+m.monto,0);body=`<div class="grid"><div class="stat"><div class="v pos">${fmtM(ing)}</div><div class="l">Ingresos</div></div><div class="stat"><div class="v neg">${fmtM(gas)}</div><div class="l">Gastos directos</div></div><div class="stat"><div class="v ${ing-gas>=0?'pos':'neg'}">${fmtM(ing-gas)}</div><div class="l">Balance</div></div></div><div class="card list">${ms.map(movHtml).join('')||'<div class="empty">Sin gastos ni ingresos asignados a este animal.</div>'}</div><a class="btn sec sm" href="#/mov/nuevo/gasto/${id}">➖ Agregar gasto de este animal</a>`}
  const acc=Object.entries(TIPOS).filter(([k,t])=>(!t.sexo||t.sexo===a.sexo)&&a.estado==='activo');
- $('#app').innerHTML=`<div class="card"><div class="row"><div class="av ${a.sexo}" style="width:52px;height:52px;font-size:20px">${a.sexo}</div><div class="sp"><h2 style="margin:0">${esc(a.codigo)} ${esc(a.nombre||'')}</h2><div class="sub">${et.n} · ${edadTxt(a.fechaNac)} · ${esc(a.raza||'')}</div></div><a class="btn sm sec" href="#/animalform/${id}">Editar</a></div>
+ $('#app').innerHTML=`<div class="card"><div class="row">${avHtml(a,52)}<div class="sp"><h2 style="margin:0">${esc(a.codigo)} ${esc(a.nombre||'')}</h2><div class="sub">${et.n} · ${edadTxt(a.fechaNac)} · ${esc(a.raza||'')}</div></div><a class="btn sm sec" href="#/animalform/${id}">Editar</a></div>
  <div style="margin-top:8px">${a.estado!=='activo'?`<span class="tag b">${a.estado==='vendido'?'Vendido':'Muerto'}</span>`:''}${a.sexo==='H'&&r.estado?`<span class="tag ${r.estado==='Preñada'?'':'g'}">${r.estado}</span>`:''}${r.lactando?'<span class="tag i">En ordeño</span>':''}${s.map(x=>`<span class="tag ${x.k==='mast'?'b':'w'}">${esc(x.txt)}</span>`).join('')}</div></div>
  ${acc.length?`<h3>Registrar</h3><div class="acts">${acc.map(([k,t])=>`<a class="btn sec sm" href="#/evento/${id}/${k}">${t.ic} ${t.n}</a>`).join('')}</div>`:''}
- <div class="tabs">${T('general','General')}${T('repro','Reproducción')}${T('prod','Producción')}${T('sanidad','Sanidad')}${T('historial','Historial')}</div>${body}
+ <div class="tabs">${T('general','General')}${T('repro','Reproducción')}${T('prod','Producción')}${T('sanidad','Sanidad')}${T('archivos','📷 Fotos y docs')}${T('finanzas','💰 Finanzas')}${T('historial','Historial')}</div>${body}
  <div class="row" style="margin-top:16px">${a.estado!=='activo'?`<button class="btn sm sec" id="react">Reactivar animal</button>`:''}<span class="sp"></span><button class="btn sm bad" id="borrar">Eliminar animal</button></div>`;
- $('#borrar').onclick=async()=>{if(!confirm('¿Eliminar este animal y todos sus registros? No se puede deshacer.'))return;for(const e of evDe(id))await del('eventos',e.id);await del('animales',id);toast('Animal eliminado');go('#/animales')};
+ hidratar();if(tab==='archivos')archivosEventos(a);
+ $('#borrar').onclick=async()=>{if(!confirm('¿Eliminar este animal y todos sus registros? No se puede deshacer.'))return;for(const e of evDe(id)){await borrarMovEvento(e.id);await del('eventos',e.id)}for(const x of S.archivos.filter(x=>x.animalId===id)){await del('archivos',x.id);await borrarBlob(x.id)}await del('animales',id);toast('Animal eliminado');go('#/animales')};
  if($('#react'))$('#react').onclick=async()=>{a.estado='activo';await put('animales',a);route()};
- document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Eliminar este registro?'))return;const e=S.eventos.find(x=>x.id===b.dataset.del);await del('eventos',e.id);if((e.tipo==='venta'||e.tipo==='muerte')&&a.estado!=='activo'){a.estado='activo';await put('animales',a)}route()})};
+ document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Eliminar este registro?'))return;const e=S.eventos.find(x=>x.id===b.dataset.del);await borrarMovEvento(e.id);await del('eventos',e.id);if((e.tipo==='venta'||e.tipo==='muerte')&&a.estado!=='activo'){a.estado='activo';await put('animales',a)}route()})};
 function intervaloPartos(a){const p=evDe(a.id).filter(e=>e.tipo==='parto');if(p.length<2)return'—';let s=0;for(let i=1;i<p.length;i++)s+=dias(p[i-1].fecha,p[i].fecha);return Math.round(s/(p.length-1))+' días'}
 function evTxt(e){const d=e.datos||{},t=TIPOS[e.tipo];const p=[];
  if(e.tipo==='leche')p.push(num(litros(e))+' L'+(d.manana&&d.tarde?` (${num(d.manana)} + ${num(d.tarde)})`:''));
@@ -389,7 +414,10 @@ V.evento=(id,tipo)=>{const a=animal(id),t=TIPOS[tipo];if(!a||!t)return go('#/ani
  $('#fe').onsubmit=async ev=>{ev.preventDefault();const {fecha,notas,...datos}=formData(ev.target);for(const [k,,ty] of t.c)if(ty==='number'&&datos[k]!=='')datos[k]=Number(datos[k]);
   if(tipo==='peso'&&!(datos.valor>0))return toast('Ingresa el peso');if(tipo==='leche'&&!(litros({datos})>0))return toast('Ingresa los litros');
   await registrar(a,tipo,fecha,datos,notas);toast('Registro guardado');go('#/animal/'+id)}};
+async function borrarMovEvento(eid){for(const m of S.movimientos.filter(m=>m.eventoId===eid))await del('movimientos',m.id)}
 async function registrar(a,tipo,fecha,datos,notas){const e={id:uid(),animalId:a.id,fincaId:a.fincaId,tipo,fecha,datos,notas:notas||''};await put('eventos',e);
+ if(['vacuna','desparasitacion','tratamiento','servicio'].includes(tipo)&&Number(datos.costo)>0)await put('movimientos',{id:uid(),fincaId:a.fincaId,tipo:'gasto',categoria:tipo==='servicio'?'Reproducción (pajillas, inseminación)':'Sanidad – vacunas y medicamentos',fecha,monto:Number(datos.costo),descripcion:TIPOS[tipo].n+(datos.producto||datos.toro?': '+(datos.producto||datos.toro):'')+' · '+nombreA(a),animalId:a.id,loteId:a.loteId||'',eventoId:e.id});
+ if(tipo==='venta'&&Number(datos.precio)>0)await put('movimientos',{id:uid(),fincaId:a.fincaId,tipo:'ingreso',categoria:'Venta de ganado',fecha,monto:Number(datos.precio),cantidad:datos.peso||'',unidad:datos.peso?'kg':'',descripcion:'Venta de '+nombreA(a),tercero:datos.comprador||'',animalId:a.id,eventoId:e.id});
  if(tipo==='lote'&&datos.destino){a.loteId=datos.destino;await put('animales',a)}
  if(tipo==='venta'){a.estado='vendido';a.fechaSalida=fecha;await put('animales',a)}
  if(tipo==='muerte'){a.estado='muerto';a.fechaSalida=fecha;await put('animales',a)}
@@ -409,13 +437,15 @@ V.masivo=(tipo)=>{if(!tipo){$('#app').innerHTML=`<h2>Registro masivo</h2><div cl
   $('#ml').onchange=e=>{lote=e.target.value;pinta()};pinta();
   $('#mok').onclick=async()=>{const f=$('#mf').value,m={};document.querySelectorAll('#mlst input').forEach(i=>{if(i.value!==''){(m[i.dataset.a]=m[i.dataset.a]||{})[i.dataset.k]=Number(i.value)}});
    const ids=Object.keys(m);if(!ids.length)return toast('No hay datos para guardar');for(const id of ids)await registrar(animal(id),tipo,f,m[id],'');toast(ids.length+' registros guardados');go('#/inicio')};return}
- $('#app').innerHTML=base+`<form class="card" id="mfm"><div class="f2">${t.c.map(c=>campoHtml(c,'')).join('')}</div><label>Notas</label><input name="notas"></form><div class="card"><div class="row"><b>Animales</b><span class="sp"></span><button class="btn sm sec" id="mall">Marcar todos</button></div><div id="mlst"></div></div><button class="btn" id="mok">Guardar</button>`;
+ const cs=t.c.filter(c=>c[0]!=='costo');const conCosto=cs.length!==t.c.length;
+ $('#app').innerHTML=base+`<form class="card" id="mfm"><div class="f2">${cs.map(c=>campoHtml(c,'')).join('')}${conCosto?'<div><label>Costo total (opcional)</label><input type="number" step="any" min="0" name="costoTotal" placeholder="Se anota como un gasto"></div>':''}</div><label>Notas</label><input name="notas"></form><div class="card"><div class="row"><b>Animales</b><span class="sp"></span><button class="btn sm sec" id="mall">Marcar todos</button></div><div id="mlst"></div></div><button class="btn" id="mok">Guardar</button>`;
  const pinta=()=>{const an=animalesF().filter(a=>!lote||a.loteId===lote).sort((x,y)=>x.codigo.localeCompare(y.codigo,'es',{numeric:true}));$('#mlst').innerHTML=an.map(a=>`<label class="chk"><input type="checkbox" value="${a.id}"><span>${esc(nombreA(a))} <span class="sub">· ${etapa(a).n} · ${esc(loteN(a.loteId))}</span></span></label>`).join('')||'<div class="empty">No hay animales.</div>'};
  $('#ml').onchange=e=>{lote=e.target.value;pinta()};pinta();
  $('#mall').onclick=()=>{const cb=[...document.querySelectorAll('#mlst input')];const v=!cb.every(c=>c.checked);cb.forEach(c=>c.checked=v)};
  $('#mok').onclick=async()=>{const sel=[...document.querySelectorAll('#mlst input:checked')].map(c=>c.value);if(!sel.length)return toast('Selecciona al menos un animal');
-  const {notas,...datos}=formData($('#mfm'));for(const [k,,ty] of t.c)if(ty==='number'&&datos[k]!=='')datos[k]=Number(datos[k]);if(tipo==='lote'&&!datos.destino)return toast('Elige el lote destino');
-  for(const id of sel)await registrar(animal(id),tipo,$('#mf').value,{...datos},notas);toast(sel.length+' animales actualizados');go('#/inicio')}};
+  const {notas,costoTotal,...datos}=formData($('#mfm'));for(const [k,,ty] of t.c)if(ty==='number'&&datos[k]!==''&&datos[k]!=null)datos[k]=Number(datos[k]);if(tipo==='lote'&&!datos.destino)return toast('Elige el lote destino');
+  for(const id of sel)await registrar(animal(id),tipo,$('#mf').value,{...datos},notas);
+  if(Number(costoTotal)>0)await put('movimientos',{id:uid(),fincaId:S.config.fincaActual,tipo:'gasto',categoria:'Sanidad – vacunas y medicamentos',fecha:$('#mf').value,monto:Number(costoTotal),cantidad:sel.length,unidad:'animal',descripcion:t.n+' masiva'+(datos.producto?': '+datos.producto:'')+' · '+sel.length+' animales',loteId:lote||''});toast(sel.length+' animales actualizados');go('#/inicio')}};
 
 V.alertas=()=>{const al=alertas();$('#app').innerHTML=`<h2>Alertas (${al.length})</h2>${al.length?al.map(alHtml).join(''):'<div class="card empty">Todo al día. 👌</div>'}<p class="sub">Los días para cada alerta se ajustan en Más → Parámetros.</p>`};
 
@@ -427,6 +457,8 @@ const INF={
  lechevaca:{n:'Leche por vaca (30 días)',f:()=>[['Código','Nombre','Días lactancia','Registros','Total (L)','Promedio L/día','Máximo'],animalesF(true).filter(a=>a.sexo==='H').map(a=>{const l=evDe(a.id).filter(e=>e.tipo==='leche'&&dias(e.fecha,hoy())<=30).map(litros);return l.length?[a.codigo,a.nombre||'',repro(a).diasLact??'',l.length,+l.reduce((s,v)=>s+v,0).toFixed(1),+(l.reduce((s,v)=>s+v,0)/l.length).toFixed(2),Math.max(...l)]:null}).filter(Boolean)]},
  pesos:{n:'Pesajes y ganancia',f:()=>{const rows=[];animalesF(true).forEach(a=>{const p=evDe(a.id).filter(e=>e.tipo==='peso');p.forEach((e,i)=>{const pr=p[i-1];const d=pr?dias(pr.fecha,e.fecha):0;rows.push([a.codigo,a.nombre||'',e.fecha,e.datos.valor,pr?+(e.datos.valor-pr.datos.valor).toFixed(1):'',pr&&d>0?Math.round((e.datos.valor-pr.datos.valor)/d*1000):''])})});return[['Código','Nombre','Fecha','Peso (kg)','Diferencia (kg)','Ganancia diaria (g)'],rows.sort((x,y)=>y[2].localeCompare(x[2]))]}},
  sanidad:{n:'Sanidad',f:()=>{const ids=new Set(animalesF(true).map(a=>a.id));return[['Fecha','Animal','Tipo','Detalle','Notas'],S.eventos.filter(e=>ids.has(e.animalId)&&['vacuna','desparasitacion','tratamiento','mastitis'].includes(e.tipo)).sort((x,y)=>y.fecha.localeCompare(x.fecha)).map(e=>[e.fecha,nombreA(animal(e.animalId)),TIPOS[e.tipo].n,evTxt(e),e.notas||''])]}},
+ finmes:{n:'Finanzas por mes',f:()=>{const m={};movF().forEach(x=>{const k=x.fecha.slice(0,7);const r=m[k]=m[k]||{i:0,g:0};r[x.tipo==='ingreso'?'i':'g']+=x.monto});return[['Mes','Ingresos','Gastos','Ganancia'],Object.keys(m).sort().reverse().map(k=>[k,m[k].i,m[k].g,m[k].i-m[k].g])]}},
+ movs:{n:'Movimientos (ingresos y gastos)',f:()=>[['Fecha','Tipo','Categoría','Descripción','Cantidad','Unidad','Precio unitario','Monto','Proveedor / cliente','Lote','Animal'],movF().sort((x,y)=>y.fecha.localeCompare(x.fecha)).map(x=>[x.fecha,x.tipo==='ingreso'?'Ingreso':'Gasto',x.categoria,x.descripcion||'',x.cantidad===''?'':x.cantidad,x.unidad||'',x.precioUnit===''?'':x.precioUnit,x.tipo==='gasto'?-x.monto:x.monto,x.tercero||'',x.loteId?loteN(x.loteId):'',x.animalId?nombreA(animal(x.animalId)):''])]},
  bajas:{n:'Ventas y muertes',f:()=>{const ids=new Set(animalesF(true).map(a=>a.id));return[['Fecha','Animal','Tipo','Detalle'],S.eventos.filter(e=>ids.has(e.animalId)&&(e.tipo==='venta'||e.tipo==='muerte')).sort((x,y)=>y.fecha.localeCompare(x.fecha)).map(e=>[e.fecha,nombreA(animal(e.animalId)),TIPOS[e.tipo].n,evTxt(e)])]}}
 };
 V.informes=(k)=>{if(!k||!INF[k]){$('#app').innerHTML=`<h2>Informes</h2><div class="card list">${Object.entries(INF).map(([k,v])=>`<a class="it" href="#/informes/${k}"><div class="av">📊</div><div class="sp"><b>${v.n}</b></div></a>`).join('')}</div>`;return}
@@ -438,11 +470,12 @@ function descargar(txt,nombre,tipo){const b=new Blob([txt],{type:tipo});const u=
 V.mas=()=>{$('#app').innerHTML=`<h2>Más</h2><div class="card list">
  <a class="it" href="#/finca"><div class="av">🏡</div><div class="sp"><b>Finca, lotes y potreros</b><div class="sub">${esc(F().nombre)}</div></div></a>
  <a class="it" href="#/informes"><div class="av">📊</div><div class="sp"><b>Informes</b><div class="sub">Inventario, leche, pesos, sanidad… exportables a Excel</div></div></a>
- <a class="it" href="#/param"><div class="av">🎛️</div><div class="sp"><b>Parámetros de alertas</b><div class="sub">Días de secado, espera voluntaria, chequeos</div></div></a>
+ <a class="it" href="#/finanzas"><div class="av">💰</div><div class="sp"><b>Finanzas</b><div class="sub">Gastos, ingresos, venta de leche, ganancia</div></div></a>
+ <a class="it" href="#/param"><div class="av">🎛️</div><div class="sp"><b>Parámetros</b><div class="sub">Alertas y moneda</div></div></a>
  <a class="it" href="#/nube"><div class="av">☁️</div><div class="sp"><b>Nube y cuenta</b><div class="sub">${N.userId?'Conectado como '+esc(N.email):'Guardar los datos en Supabase'}</div></div></a>
  <a class="it" href="#/respaldo"><div class="av">💾</div><div class="sp"><b>Respaldo de datos</b><div class="sub">Guardar o restaurar una copia</div></div></a>
  <a class="it" href="#/finca/nueva"><div class="av">➕</div><div class="sp"><b>Agregar otra finca</b></div></a></div>
- <p class="sub">Mi Ganado v2 · ${N.userId?'Datos guardados en este dispositivo y en la nube.':'Los datos se guardan solo en este dispositivo y navegador.'}</p>`};
+ <p class="sub">Mi Ganado v3 · ${N.userId?'Datos guardados en este dispositivo y en la nube.':'Los datos se guardan solo en este dispositivo y navegador.'}</p>`};
 V.login=()=>{setNav('');$('#ttl').textContent='Mi Ganado';$('#nav').innerHTML='';
  $('#app').innerHTML=`<div class="card"><h2>Iniciar sesión</h2><p class="sub">Tus datos se guardan de forma segura en la nube y solo tú puedes verlos.</p>
  <form id="fli"><label>Correo electrónico</label><input type="email" name="email" required autocomplete="email" value="${esc(N.email)}"><label>Contraseña</label><input type="password" name="pass" required minlength="6" autocomplete="current-password">
@@ -476,14 +509,134 @@ V.finca=(modo)=>{const nueva=modo==='nueva';const f=nueva?{especie:'bovino',prop
  if(nueva)return;
  $('#fl').onsubmit=async ev=>{ev.preventDefault();const d=formData(ev.target);await put('lotes',{id:uid(),fincaId:f.id,nombre:d.nombre,tipo:d.tipo,area:d.area?Number(d.area):null});route()};
  document.querySelectorAll('[data-dl]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Eliminar este lote? Los animales quedarán sin lote.'))return;for(const a of S.animales.filter(a=>a.loteId===b.dataset.dl)){a.loteId='';await put('animales',a)}await del('lotes',b.dataset.dl);route()});
- $('#delf').onclick=async()=>{if(prompt(`Escribe el nombre de la finca para eliminarla con todos sus animales y registros:`)!==f.nombre)return toast('No se eliminó');for(const e of S.eventos.filter(e=>e.fincaId===f.id))await del('eventos',e.id);for(const a of S.animales.filter(a=>a.fincaId===f.id))await del('animales',a.id);for(const l of S.lotes.filter(l=>l.fincaId===f.id))await del('lotes',l.id);await del('fincas',f.id);S.config.fincaActual=S.fincas[0]?.id||null;await saveCfg();go('#/inicio')}};
+ $('#delf').onclick=async()=>{if(prompt(`Escribe el nombre de la finca para eliminarla con todos sus animales y registros:`)!==f.nombre)return toast('No se eliminó');for(const m of S.movimientos.filter(m=>m.fincaId===f.id))await del('movimientos',m.id);for(const x of S.archivos.filter(x=>x.fincaId===f.id)){await del('archivos',x.id);await borrarBlob(x.id)}for(const e of S.eventos.filter(e=>e.fincaId===f.id))await del('eventos',e.id);for(const a of S.animales.filter(a=>a.fincaId===f.id))await del('animales',a.id);for(const l of S.lotes.filter(l=>l.fincaId===f.id))await del('lotes',l.id);await del('fincas',f.id);S.config.fincaActual=S.fincas[0]?.id||null;await saveCfg();go('#/inicio')}};
 V.param=()=>{const c=S.config;const P=[['secado','Días de lactancia para sugerir secado'],['secarAntesParto','Secar cuando falten (días al parto)'],['esperaVol','Espera voluntaria tras el parto (días)'],['alertaParto','Avisar parto con (días de anticipación)'],['diasChequeo','Chequeo de preñez a los (días del servicio)'],['celoDesde','Revisar celo desde (días del servicio)'],['celoHasta','Revisar celo hasta (días del servicio)']];
- $('#app').innerHTML=`<h2>Parámetros de alertas</h2><form class="card" id="fp"><div class="f2">${P.map(([k,l])=>`<div><label>${l}</label><input type="number" min="0" name="${k}" value="${c[k]}"></div>`).join('')}</div><p class="sub">Gestación usada: ${Object.values(ESPECIES).map(e=>e.n+' '+e.gest+' d').join(' · ')}</p><button class="btn">Guardar</button></form>`;
- $('#fp').onsubmit=async ev=>{ev.preventDefault();const d=formData(ev.target);for(const k in d)c[k]=Number(d[k]);await saveCfg();toast('Parámetros guardados');go('#/mas')}};
-V.respaldo=()=>{$('#app').innerHTML=`<h2>Respaldo de datos</h2><div class="card"><p>Los datos viven solo en este navegador. Si se borra el historial del navegador o cambias de teléfono, se pierden. <b>Descarga un respaldo cada semana</b> y guárdalo en Drive o en tu computadora.</p><button class="btn" id="exp">⬇️ Descargar respaldo</button></div><div class="card"><b>Restaurar respaldo</b><p class="sub">Reemplaza todos los datos actuales por los del archivo.</p><input type="file" accept=".json" id="imp"></div>`;
- $('#exp').onclick=()=>{descargar(JSON.stringify({app:'mi-ganado',v:1,fecha:new Date().toISOString(),datos:{fincas:S.fincas,lotes:S.lotes,animales:S.animales,eventos:S.eventos,config:S.config}},null,1),`respaldo-mi-ganado-${hoy()}.json`,'application/json');S.config.ultimoRespaldo=hoy();saveCfg()};$('#imp').onchange=importar};
+ $('#app').innerHTML=`<h2>Parámetros de alertas</h2><form class="card" id="fp"><div class="f2">${P.map(([k,l])=>`<div><label>${l}</label><input type="number" min="0" name="${k}" value="${c[k]}"></div>`).join('')}</div><div class="f2"><div><label>Moneda</label><select name="moneda">${selOpts([['₡','₡ Colones'],['$','$ Dólares']],c.moneda)}</select></div></div><p class="sub">Gestación usada: ${Object.values(ESPECIES).map(e=>e.n+' '+e.gest+' d').join(' · ')}</p><button class="btn">Guardar</button></form>`;
+ $('#fp').onsubmit=async ev=>{ev.preventDefault();const d=formData(ev.target);for(const k in d)c[k]=k==='moneda'?d[k]:Number(d[k]);await saveCfg();toast('Parámetros guardados');go('#/mas')}};
+V.respaldo=()=>{$('#app').innerHTML=`<h2>Respaldo de datos</h2><div class="card"><p>Los datos viven solo en este navegador. Si se borra el historial del navegador o cambias de teléfono, se pierden. <b>Descarga un respaldo cada semana</b> y guárdalo en Drive o en tu computadora.</p><p class="sub">El respaldo incluye todos los registros y finanzas; las fotos y documentos quedan guardados en la nube.</p><button class="btn" id="exp">⬇️ Descargar respaldo</button></div><div class="card"><b>Restaurar respaldo</b><p class="sub">Reemplaza todos los datos actuales por los del archivo.</p><input type="file" accept=".json" id="imp"></div>`;
+ $('#exp').onclick=()=>{descargar(JSON.stringify({app:'mi-ganado',v:1,fecha:new Date().toISOString(),datos:{fincas:S.fincas,lotes:S.lotes,animales:S.animales,eventos:S.eventos,archivos:S.archivos,movimientos:S.movimientos,config:S.config}},null,1),`respaldo-mi-ganado-${hoy()}.json`,'application/json');S.config.ultimoRespaldo=hoy();saveCfg()};$('#imp').onchange=importar};
 async function importar(ev){const file=ev.target.files[0];if(!file)return;try{const j=JSON.parse(await file.text());if(j.app!=='mi-ganado')throw 0;if(S.fincas.length&&!confirm('Esto reemplazará todos los datos actuales. ¿Continuar?'))return;
  for(const s of STORES)await tx(s,'readwrite',o=>o.clear());await saveN();for(const s of DATA)for(const r of j.datos[s]||[]){r._s=0;r.mod=r.mod||Date.now();await tx(s,'readwrite',o=>o.put(r))}S.config=Object.assign({},CFG0,j.datos.config||{});delete S.config.id;await saveCfg();await loadAll();toast('Respaldo restaurado');go('#/inicio');route()}catch(e){toast('Archivo de respaldo no válido')}}
+
+/* ================= Fotos y documentos ================= */
+const ARCH_TIPOS=[['foto','📷 Foto'],['cert_vacunacion','💉 Certificado de vacunación'],['cert_registro','📜 Registro / raza pura'],['cert_sanitario','🩺 Certificado sanitario'],['cert_propiedad','🏷️ Certificado de propiedad'],['guia','🚚 Guía de movilización'],['otro','📄 Otro documento']];
+const archTipoN=t=>(ARCH_TIPOS.find(x=>x[0]===t)||[0,'📄 Documento'])[1];
+const URLS={};
+const extDe=m=>({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','application/pdf':'pdf'}[m]||'bin');
+const tamTxt=b=>!b?'':b<1048576?Math.round(b/1024)+' KB':(b/1048576).toFixed(1)+' MB';
+function portadaDe(a){const f=S.archivos.filter(x=>x.animalId===a.id&&x.tipo==='foto');return f.find(x=>x.portada)||f.sort((x,y)=>(y.fecha||'').localeCompare(x.fecha||''))[0]}
+function avHtml(a,size){const f=portadaDe(a);const st=size?` style="width:${size}px;height:${size}px;font-size:${Math.round(size*.38)}px"`:'';return`<div class="av ${a.sexo}"${st}${f?` data-av="${f.id}"`:''}>${a.sexo}</div>`}
+async function urlArchivo(ar,soloLocal){if(URLS[ar.id])return URLS[ar.id];
+ const b=await tx('blobs','readonly',o=>o.get(ar.id));if(b&&b.blob){URLS[ar.id]=URL.createObjectURL(b.blob);return URLS[ar.id]}
+ if(soloLocal||!ar.ruta||!N.userId||!navigator.onLine)return null;
+ try{const sb=await Sync.cliente();if(!sb)return null;const {data,error}=await sb.storage.from('archivos').download(ar.ruta);if(error||!data)return null;
+  await tx('blobs','readwrite',o=>o.put({id:ar.id,blob:data,subido:true}));URLS[ar.id]=URL.createObjectURL(data);return URLS[ar.id]}catch(e){return null}}
+function hidratar(soloLocal){document.querySelectorAll('[data-av],[data-ph]').forEach(async el=>{const id=el.dataset.av||el.dataset.ph;const ar=S.archivos.find(x=>x.id===id);if(!ar)return;
+ const u=await urlArchivo(ar,soloLocal&&!!el.dataset.av);if(u){el.style.backgroundImage=`url("${u}")`;if(el.dataset.av)el.classList.add('img')}})}
+async function borrarBlob(id){await tx('blobs','readwrite',o=>o.delete(id));if(URLS[id]){URL.revokeObjectURL(URLS[id]);delete URLS[id]}}
+async function comprimir(file){if(!file.type.startsWith('image/'))return file;
+ try{const bmp=await createImageBitmap(file);const k=Math.min(1,1600/Math.max(bmp.width,bmp.height));const c=document.createElement('canvas');c.width=Math.round(bmp.width*k);c.height=Math.round(bmp.height*k);
+  c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);const out=await new Promise(r=>c.toBlob(b=>r(b),'image/jpeg',0.8));return out&&out.size<file.size?out:file}catch(e){return file}}
+async function guardarArchivo(a,file,meta){const blob=await comprimir(file);
+ if(blob.size>10*1024*1024){toast('El archivo pesa más de 10 MB');return false}
+ const id=uid();await tx('blobs','readwrite',o=>o.put({id,blob,subido:false}));
+ const primera=meta.tipo==='foto'&&!S.archivos.some(x=>x.animalId===a.id&&x.tipo==='foto');
+ await put('archivos',{id,fincaId:a.fincaId,animalId:a.id,tipo:meta.tipo,nombre:meta.nombre||file.name||'archivo',mime:blob.type||file.type||'application/octet-stream',tamano:blob.size,fecha:meta.fecha||hoy(),notas:meta.notas||'',portada:primera,ruta:''});return true}
+async function subirArchivos(sb){if(!N.userId)return;const pend=(await tx('blobs','readonly',o=>o.getAll())).filter(b=>!b.subido);
+ for(const b of pend){const ar=S.archivos.find(x=>x.id===b.id);if(!ar){await tx('blobs','readwrite',o=>o.delete(b.id));continue}
+  const ruta=`${N.userId}/${ar.id}.${extDe(ar.mime)}`;const {error}=await sb.storage.from('archivos').upload(ruta,b.blob,{contentType:ar.mime,upsert:true});
+  if(error)throw new Error('archivo: '+error.message);b.subido=true;await tx('blobs','readwrite',o=>o.put(b));
+  if(ar.ruta!==ruta){ar.ruta=ruta;ar.mod=Date.now();ar._s=0;await putRaw('archivos',ar)}}}
+function archivosHtml(a){const mios=S.archivos.filter(x=>x.animalId===a.id).sort((x,y)=>(y.fecha||'').localeCompare(x.fecha||''));const fotos=mios.filter(x=>x.tipo==='foto'),docs=mios.filter(x=>x.tipo!=='foto');
+ return`<div class="card"><div class="acts"><label class="btn sm upl">📷 Tomar foto<input type="file" accept="image/*" capture="environment" data-up="foto"></label><label class="btn sec sm upl">🖼️ De la galería<input type="file" accept="image/*" multiple data-up="foto"></label><label class="btn sec sm upl">📄 Documento<input type="file" accept="image/*,application/pdf" data-up="doc"></label></div><div id="docform"></div>
+ ${N.userId?'':'<p class="sub">Sin sesión en la nube: las fotos quedan solo en este dispositivo.</p>'}</div>
+ <div class="card"><b>Fotos (${fotos.length})</b>${fotos.length?`<div class="fotos" style="margin-top:8px">${fotos.map(f=>`<button class="ph" data-ph="${f.id}" data-ver="${f.id}" title="${esc(fmtF(f.fecha))}">${f.portada?'<b>⭐</b>':''}</button>`).join('')}</div>`:'<div class="empty">Aún no hay fotos. La primera será la foto de perfil.</div>'}</div>
+ <div class="card"><b>Documentos (${docs.length})</b><div class="list">${docs.map(d=>`<div class="it"><div class="av">${d.mime==='application/pdf'?'📄':'🖼️'}</div><div class="sp"><b>${esc(d.nombre)}</b><div class="sub">${esc(archTipoN(d.tipo))} · ${fmtF(d.fecha)} · ${tamTxt(d.tamano)}${d.notas?' · '+esc(d.notas):''}</div></div><button class="btn sm sec" data-abrir="${d.id}">Abrir</button><button class="btn sm sec" data-delar="${d.id}" title="Eliminar">✕</button></div>`).join('')||'<div class="empty">Sin documentos. Sube certificados de vacunación, registro, guías…</div>'}</div></div>`}
+function archivosEventos(a){
+ document.querySelectorAll('[data-up]').forEach(inp=>inp.onchange=async()=>{const files=[...inp.files];inp.value='';if(!files.length)return;
+  if(inp.dataset.up==='foto'){let n=0;for(const f of files)if(await guardarArchivo(a,f,{tipo:'foto',nombre:f.name}))n++;if(n)toast(n===1?'Foto guardada':n+' fotos guardadas');route();return}
+  const file=files[0];if(file.size>25*1024*1024)return toast('El archivo es demasiado grande (máx. 10 MB)');
+  $('#docform').innerHTML=`<form id="fdoc" style="margin-top:12px"><div class="f2"><div><label>Tipo de documento</label><select name="tipo">${selOpts(ARCH_TIPOS.filter(x=>x[0]!=='foto'),'cert_vacunacion')}</select></div><div><label>Nombre</label><input name="nombre" value="${esc(file.name.replace(/\.[^.]+$/,''))}"></div><div><label>Fecha del documento</label><input type="date" name="fecha" value="${hoy()}"></div><div><label>Notas</label><input name="notas"></div></div><div class="row" style="margin-top:10px"><button class="btn">Guardar documento</button><button type="button" class="btn sec" id="docx">Cancelar</button></div></form>`;
+  $('#docx').onclick=()=>$('#docform').innerHTML='';
+  $('#fdoc').onsubmit=async ev=>{ev.preventDefault();const d=formData(ev.target);if(await guardarArchivo(a,file,d)){toast('Documento guardado');route()}}});
+ document.querySelectorAll('[data-ver]').forEach(b=>b.onclick=()=>verFoto(S.archivos.find(x=>x.id===b.dataset.ver)));
+ document.querySelectorAll('[data-abrir]').forEach(b=>b.onclick=()=>abrirDoc(S.archivos.find(x=>x.id===b.dataset.abrir)));
+ document.querySelectorAll('[data-delar]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Eliminar este documento?'))return;await del('archivos',b.dataset.delar);await borrarBlob(b.dataset.delar);route()})}
+async function verFoto(ar){if(!ar)return;const u=await urlArchivo(ar);if(!u)return toast('Sin conexión: esta foto no está guardada en el teléfono');
+ const ov=document.createElement('div');ov.className='ov';ov.innerHTML=`<img src="${u}" alt=""><div class="row">${ar.tipo==='foto'&&!ar.portada?'<button class="btn sec sm" data-x="p">⭐ Foto de perfil</button>':''}<button class="btn sec sm" data-x="d">⬇️ Guardar</button><button class="btn bad sm" data-x="b">🗑️ Eliminar</button><button class="btn sm" data-x="c">✕ Cerrar</button></div>`;
+ document.body.appendChild(ov);const cerrar=()=>ov.remove();
+ ov.querySelector('[data-x=c]').onclick=cerrar;
+ ov.querySelector('[data-x=d]').onclick=()=>{const l=document.createElement('a');l.href=u;l.download=(ar.nombre||'foto').replace(/\.[^.]+$/,'')+'.'+extDe(ar.mime);document.body.appendChild(l);l.click();l.remove()};
+ ov.querySelector('[data-x=b]').onclick=async()=>{if(!confirm('¿Eliminar esta foto?'))return;await del('archivos',ar.id);await borrarBlob(ar.id);cerrar();route()};
+ const p=ov.querySelector('[data-x=p]');if(p)p.onclick=async()=>{for(const x of S.archivos.filter(x=>x.animalId===ar.animalId&&x.portada&&x.id!==ar.id)){x.portada=false;await put('archivos',x)}ar.portada=true;await put('archivos',ar);cerrar();toast('Foto de perfil actualizada');route()}}
+async function abrirDoc(ar){if(!ar)return;if(ar.mime.startsWith('image/'))return verFoto(ar);const u=await urlArchivo(ar);if(!u)return toast('Sin conexión: este documento no está guardado en el teléfono');
+ const l=document.createElement('a');l.href=u;l.target='_blank';l.download=(ar.nombre||'documento')+'.'+extDe(ar.mime);document.body.appendChild(l);l.click();l.remove()}
+
+/* ================= Finanzas ================= */
+const CAT_G=['Alimentación – concentrado','Alimentación – sal y minerales','Alimentación – forrajes (heno, pacas, ensilaje)','Alimentación – otros (melaza, suplementos)','Sanidad – vacunas y medicamentos','Sanidad – veterinario','Reproducción (pajillas, inseminación)','Mano de obra','Pastos y potreros (abono, herbicida, semilla)','Combustible y transporte','Servicios (luz, agua, teléfono)','Instalaciones y cercas','Equipo y herramientas','Compra de ganado','Impuestos y trámites (SENASA, guías)','Otros gastos'];
+const CAT_I=['Venta de leche','Venta de ganado','Venta de queso / derivados','Otros ingresos'];
+const INVERSION=new Set(['Compra de ganado','Instalaciones y cercas','Equipo y herramientas']);
+const UNIDADES=['saco','kg','quintal','litro','paca','dosis','frasco','unidad','animal','jornal','hora','galón','mes'];
+const grupoCat=c=>c.split(' – ')[0].replace(/ \(.*$/,'');
+const fmtM=v=>{v=Number(v)||0;return(v<0?'-':'')+(S.config.moneda||'₡')+Math.abs(v).toLocaleString('es-CR',{maximumFractionDigits:0})};
+const movF=()=>S.movimientos.filter(m=>m.fincaId===S.config.fincaActual);
+let fper={p:'mes',d:'',h:''};
+function rango(){const t=hoy(),m=t.slice(0,7),y=Number(t.slice(0,4));
+ if(fper.p==='mes')return[m+'-01',t];
+ if(fper.p==='mesant'){const fin=addDias(m+'-01',-1);return[fin.slice(0,7)+'-01',fin]}
+ if(fper.p==='tri')return[addDias(t,-89),t];
+ if(fper.p==='anio')return[y+'-01-01',t];
+ if(fper.p==='anioant')return[(y-1)+'-01-01',(y-1)+'-12-31'];
+ if(fper.p==='otro')return[fper.d||'0000-01-01',fper.h||t];
+ return['0000-01-01','9999-12-31']}
+function resumen(d,h){const ms=movF().filter(m=>m.fecha>=d&&m.fecha<=h);const r={ms,ing:0,gas:0,oper:0,gG:{},gI:{},lVend:0,mLeche:0,lProd:0};
+ for(const m of ms){if(m.tipo==='ingreso'){r.ing+=m.monto;r.gI[m.categoria]=(r.gI[m.categoria]||0)+m.monto;if(m.categoria==='Venta de leche'){r.mLeche+=m.monto;if(Number(m.cantidad)>0)r.lVend+=Number(m.cantidad)}}
+  else{r.gas+=m.monto;const g=grupoCat(m.categoria);r.gG[g]=(r.gG[g]||0)+m.monto;if(!INVERSION.has(m.categoria))r.oper+=m.monto}}
+ const ids=new Set(animalesF(true).map(a=>a.id));for(const e of S.eventos)if(e.tipo==='leche'&&e.fecha>=d&&e.fecha<=h&&ids.has(e.animalId))r.lProd+=litros(e);return r}
+function barras(obj,total){const ks=Object.keys(obj).sort((a,b)=>obj[b]-obj[a]);const mx=Math.max(1,...ks.map(k=>obj[k]));
+ return ks.map(k=>`<div class="hb"><div class="n" title="${esc(k)}">${esc(k)}</div><div class="b"><div style="width:${obj[k]/mx*100}%"></div></div><div class="v">${fmtM(obj[k])}${total?' · '+Math.round(obj[k]/total*100)+'%':''}</div></div>`).join('')}
+function movHtml(m){const a=m.animalId?animal(m.animalId):null;return`<a class="it" href="#/mov/${m.id}"><div class="av" style="font-size:16px">${m.tipo==='ingreso'?'➕':'➖'}</div><div class="sp" style="min-width:0"><b>${esc(m.categoria)}</b><div class="sub">${fmtF(m.fecha)}${m.descripcion?' · '+esc(m.descripcion):''}${m.loteId?' · '+esc(loteN(m.loteId)):''}${a&&!(m.descripcion||'').includes(a.codigo)?' · '+esc(nombreA(a)):''}</div></div><b class="${m.tipo==='ingreso'?'pos':'neg'}" style="white-space:nowrap">${m.tipo==='gasto'?'-':''}${fmtM(m.monto)}</b></a>`}
+function finResumenCard(){const t=hoy();const r=resumen(t.slice(0,7)+'-01',t);
+ if(!movF().length)return`<div class="card"><div class="row"><b>💰 Finanzas</b><span class="sp"></span><a class="btn sm sec" href="#/finanzas">Abrir</a></div><p class="sub" style="margin:6px 0 0">Anota tus gastos (concentrado, vacunas, mano de obra…) y ventas de leche o ganado para ver tu ganancia del mes.</p></div>`;
+ return`<a class="card" href="#/finanzas" style="display:block;text-decoration:none;color:inherit"><div class="row"><b>💰 Finanzas de este mes</b><span class="sp"></span><span class="sub">Ver más ›</span></div><div class="grid" style="margin-top:8px"><div><div class="sub">Ingresos</div><b class="pos">${fmtM(r.ing)}</b></div><div><div class="sub">Gastos</div><b class="neg">${fmtM(r.gas)}</b></div><div><div class="sub">Ganancia</div><b class="${r.ing-r.gas>=0?'pos':'neg'}">${fmtM(r.ing-r.gas)}</b></div></div></a>`}
+V.finanzas=()=>{const [d,h]=rango();const r=resumen(d,h);const gan=r.ing-r.gas;
+ const lista=r.ms.slice().sort((x,y)=>y.fecha.localeCompare(x.fecha)||(y.mod||0)-(x.mod||0));
+ $('#app').innerHTML=`<div class="row"><h2 class="sp">💰 Finanzas</h2><select id="fp" style="width:auto">${selOpts([['mes','Este mes'],['mesant','Mes anterior'],['tri','Últimos 3 meses'],['anio','Este año'],['anioant','Año anterior'],['todo','Todo'],['otro','Otras fechas…']],fper.p)}</select></div>
+ ${fper.p==='otro'?`<div class="card f2"><div><label>Desde</label><input type="date" id="fd" value="${fper.d}"></div><div><label>Hasta</label><input type="date" id="fh" value="${fper.h||hoy()}"></div></div>`:''}
+ <div class="acts" style="margin-bottom:12px"><a class="btn" href="#/mov/nuevo/gasto">➖ Gasto</a><a class="btn" href="#/mov/nuevo/ingreso">➕ Ingreso</a><a class="btn sec" href="#/mov/nuevo/leche">🥛 Venta de leche</a></div>
+ <div class="grid"><div class="stat"><div class="v pos">${fmtM(r.ing)}</div><div class="l">Ingresos</div></div><div class="stat"><div class="v neg">${fmtM(r.gas)}</div><div class="l">Gastos</div></div><div class="stat"><div class="v ${gan>=0?'pos':'neg'}">${fmtM(gan)}</div><div class="l">Ganancia${r.ing?' · margen '+Math.round(gan/r.ing*100)+'%':''}</div></div></div>
+ ${r.lProd||r.lVend?`<div class="card"><b>🥛 Leche</b><div class="grid" style="margin-top:8px"><div><div class="sub">Producidos (registrados)</div><b>${num(r.lProd,0)} L</b></div><div><div class="sub">Vendidos</div><b>${num(r.lVend,0)} L</b></div><div><div class="sub">Precio promedio</div><b>${r.lVend?fmtM(r.mLeche/r.lVend)+'/L':'—'}</b></div><div><div class="sub">Costo de producción</div><b>${r.lProd?fmtM(r.oper/r.lProd)+'/L':'—'}</b></div></div><p class="sub" style="margin:8px 0 0">Costo por litro = gastos de operación del período (sin compra de ganado, instalaciones ni equipo) ÷ litros registrados en el ordeño.</p></div>`:''}
+ ${r.gas?`<div class="card"><b>¿En qué se va la plata?</b><div style="margin-top:8px">${barras(r.gG,r.gas)}</div>${r.gas-r.oper>0?`<p class="sub" style="margin:6px 0 0">Incluye ${fmtM(r.gas-r.oper)} en inversiones (ganado, instalaciones, equipo).</p>`:''}</div>`:''}
+ ${r.ing?`<div class="card"><b>Ingresos por tipo</b><div style="margin-top:8px">${barras(r.gI,r.ing)}</div></div>`:''}
+ <div class="card list"><b>Movimientos (${lista.length})</b>${lista.slice(0,150).map(movHtml).join('')||'<div class="empty">No hay movimientos en este período.</div>'}</div>
+ <details class="card"><summary><b>¿Cómo llevar los gastos?</b></summary><p>No hace falta medir lo que come cada animal. Anota cada <b>compra</b> el día que la haces (sacos de concentrado, sal, pacas, vacunas, pago de peones, diésel…) con su categoría, y cada <b>venta</b> (leche, terneros, toros).</p><p>Si un gasto es solo de un grupo, asígnalo a un <b>lote</b> (ej. "Lote ordeño"); si es de un animal, elígelo. Los costos de vacunas, tratamientos e inseminaciones que anotes en la ficha del animal, y las ventas de ganado, se agregan aquí solos.</p><p>Para la leche: anota cada pago de la lechería como <b>Venta de leche</b> con los litros y el precio por litro; así la app calcula el precio promedio y tu costo por litro.</p></details>
+ <a class="btn sec sm" href="#/informes/movs">📊 Exportar a Excel</a>`;
+ $('#fp').onchange=e=>{fper.p=e.target.value;V.finanzas()};
+ if($('#fd')){$('#fd').onchange=e=>{fper.d=e.target.value;V.finanzas()};$('#fh').onchange=e=>{fper.h=e.target.value;V.finanzas()}}};
+V.mov=(id,tipo,animalId)=>{let m;const nuevo=id==='nuevo';
+ if(nuevo){m={tipo:tipo==='ingreso'||tipo==='leche'?'ingreso':'gasto',fecha:hoy(),animalId:animalId||'',loteId:animalId?(animal(animalId)?.loteId||''):''};if(tipo==='leche')Object.assign(m,{categoria:'Venta de leche',unidad:'litro'})}
+ else{m=S.movimientos.find(x=>x.id===id);if(!m)return go('#/finanzas')}
+ const ing=m.tipo==='ingreso',leche=m.categoria==='Venta de leche';const volver=animalId?'#/animal/'+animalId+'/finanzas':'#/finanzas';
+ const cats=ing?CAT_I:CAT_G;
+ $('#app').innerHTML=`<h2>${nuevo?(leche?'🥛 Venta de leche':ing?'➕ Nuevo ingreso':'➖ Nuevo gasto'):(ing?'Editar ingreso':'Editar gasto')}</h2>
+ ${m.eventoId?'<p class="tag i">Creado automáticamente desde un registro del animal.</p>':''}
+ <form class="card" id="fm"><div class="f2"><div><label>Categoría *</label><select name="categoria" required>${selOpts(cats,m.categoria,'Elegir…')}</select></div><div><label>Fecha *</label><input type="date" name="fecha" required value="${esc(m.fecha)}"></div></div>
+ <label>Descripción</label><input name="descripcion" value="${esc(m.descripcion)}" placeholder="${ing?'Ej. Pago quincena lechería':'Ej. Concentrado 20% proteína'}">
+ <div class="f2"><div><label>${leche?'Litros vendidos':'Cantidad (opcional)'}</label><input type="number" step="any" min="0" name="cantidad" id="mc" value="${esc(m.cantidad)}" inputmode="decimal"></div><div><label>Unidad</label><select name="unidad">${selOpts(UNIDADES,m.unidad,'—')}</select></div>
+ <div><label>${leche?'Precio por litro':'Precio por unidad (opcional)'}</label><input type="number" step="any" min="0" name="precioUnit" id="mp" value="${esc(m.precioUnit)}" inputmode="decimal"></div><div><label>Monto total (${esc(S.config.moneda||'₡')}) *</label><input type="number" step="any" min="0" name="monto" id="mm" required value="${esc(m.monto)}" inputmode="decimal"></div></div>
+ <p class="sub" id="mhint"></p>
+ <div class="f2"><div><label>${ing?'Cliente / comprador':'Proveedor'}</label><input name="tercero" value="${esc(m.tercero)}" placeholder="${leche?'Ej. Lechería, cooperativa':''}"></div>
+ <div><label>Asignar a lote (opcional)</label><select name="loteId">${selOpts(lotesF().map(l=>[l.id,l.nombre]),m.loteId,'Toda la finca')}</select></div>
+ <div><label>Asignar a animal (opcional)</label><select name="animalId">${selOpts(animalesF(true).sort((x,y)=>x.codigo.localeCompare(y.codigo,'es',{numeric:true})).map(a=>[a.id,nombreA(a)]),m.animalId,'—')}</select></div></div>
+ <div class="row" style="margin-top:14px"><button class="btn">Guardar</button><a class="btn sec" href="${volver}">Cancelar</a><span class="sp"></span>${nuevo?'':'<button type="button" class="btn bad sm" id="mdel">Eliminar</button>'}</div></form>`;
+ const calc=()=>{const c=Number($('#mc').value),p=Number($('#mp').value);if(c>0&&p>0)$('#mm').value=Math.round(c*p*100)/100};
+ $('#mc').oninput=calc;$('#mp').oninput=calc;
+ const hint=()=>{if($('[name=categoria]').value!=='Venta de leche'){$('#mhint').textContent='';return}const f=$('[name=fecha]').value;const ids=new Set(animalesF(true).map(a=>a.id));const l=S.eventos.filter(e=>e.tipo==='leche'&&e.fecha===f&&ids.has(e.animalId)).reduce((s,e)=>s+litros(e),0);$('#mhint').textContent=l?`Ordeño registrado ese día: ${num(l)} L.`:''};
+ $('[name=fecha]').onchange=hint;$('[name=categoria]').onchange=hint;hint();
+ if($('#mdel'))$('#mdel').onclick=async()=>{if(!confirm('¿Eliminar este movimiento?'))return;await del('movimientos',m.id);toast('Eliminado');go(volver)};
+ $('#fm').onsubmit=async ev=>{ev.preventDefault();const d=formData(ev.target);if(!(Number(d.monto)>0))return toast('Ingresa el monto');
+  const o=Object.assign({},m,d,{id:m.id||uid(),fincaId:m.fincaId||S.config.fincaActual,monto:Number(d.monto),cantidad:d.cantidad===''?'':Number(d.cantidad),precioUnit:d.precioUnit===''?'':Number(d.precioUnit)});
+  await put('movimientos',o);toast('Guardado');go(volver)}};
 
 /* ================= Inicio ================= */
 if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').then(r=>{r.onupdatefound=()=>{const w=r.installing;w&&w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)toast('Nueva versión lista: cierra y abre la app')})}}).catch(()=>{});
