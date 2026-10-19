@@ -91,6 +91,18 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 .hb .b div{height:100%;background:var(--pri);border-radius:7px}
 .hb .v{font-size:12.5px;color:var(--muted);min-width:86px;text-align:right}
 .pos{color:var(--pri)}.neg{color:var(--bad)}
+.lk{text-decoration:none;color:inherit;min-width:0}.ag .btn{flex:none;white-space:nowrap}
+.ag .av{background:var(--pri2)}.ag.sanidad .av{background:var(--info2)}.ag.manejo .av{background:var(--warn2)}.ag.mias .av{background:var(--bad2)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal .h{text-align:center;font-size:11px;color:var(--muted);font-weight:600}
+.cal button{position:relative;min-height:50px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);font:inherit;font-size:13px;padding:4px 2px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
+.cal button.hoy{border-color:var(--pri);font-weight:700}
+.cal button.sel{background:var(--pri);color:#fff;border-color:var(--pri)}
+.cal button.atr span{color:var(--bad)}.cal button.sel.atr span{color:#fff}
+.cal i{display:flex;gap:2px}.cal small{font-size:10px;color:var(--muted)}.cal button.sel small{color:#fff}
+.cal em,.ley em{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--pri)}
+em.sanidad{background:var(--info)}em.manejo{background:var(--warn)}em.mias{background:var(--bad)}
+.ley{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;color:var(--muted)}.ley em{margin-right:4px}
 .upl{position:relative;overflow:hidden}.upl input{position:absolute;inset:0;opacity:0;cursor:pointer}
 nav a{font-size:10.5px}
 </style>
@@ -153,14 +165,14 @@ const TIPOS={
 };
 
 /* ================= Base de datos (IndexedDB) ================= */
-const STORES=['fincas','lotes','animales','eventos','archivos','movimientos','config','tombs','blobs'];
-const DATA=['fincas','lotes','animales','eventos','archivos','movimientos'];
-let db, S={fincas:[],lotes:[],animales:[],eventos:[],archivos:[],movimientos:[],config:{}};
+const STORES=['fincas','lotes','animales','eventos','archivos','movimientos','tareas','config','tombs','blobs'];
+const DATA=['fincas','lotes','animales','eventos','archivos','movimientos','tareas'];
+let db, S={fincas:[],lotes:[],animales:[],eventos:[],archivos:[],movimientos:[],tareas:[],config:{}};
 const CFG0={fincaActual:null,moneda:'₡',secado:305,esperaVol:60,alertaParto:15,diasChequeo:45,celoDesde:18,celoHasta:24,secarAntesParto:60};
 /* N = configuración de la nube (solo de este dispositivo, no se sincroniza) */
 const NUBE_URL='https://ioljiwrrypodbiqeamzi.supabase.co', NUBE_KEY='sb_publishable__szpsGCEHdHGlhHuUadErw_IBU0-Rrq';
 let N={id:'nube',url:NUBE_URL,key:NUBE_KEY,userId:null,email:'',pull:{},cfgDirty:false,ultimaSync:null};
-function openDB(){return new Promise((ok,ko)=>{const r=indexedDB.open('mi-ganado',3);r.onupgradeneeded=()=>{STORES.forEach(s=>{if(!r.result.objectStoreNames.contains(s))r.result.createObjectStore(s,{keyPath:'id'})})};r.onsuccess=()=>ok(r.result);r.onerror=()=>ko(r.error)})}
+function openDB(){return new Promise((ok,ko)=>{const r=indexedDB.open('mi-ganado',4);r.onupgradeneeded=()=>{STORES.forEach(s=>{if(!r.result.objectStoreNames.contains(s))r.result.createObjectStore(s,{keyPath:'id'})})};r.onsuccess=()=>ok(r.result);r.onerror=()=>ko(r.error)})}
 function tx(store,mode,fn){return new Promise((ok,ko)=>{const t=db.transaction(store,mode);const o=t.objectStore(store);const res=fn(o);t.oncomplete=()=>ok(res&&res.result);t.onerror=()=>ko(t.error)})}
 async function loadAll(){for(const s of STORES){if(s==='tombs'||s==='blobs')continue;const rows=await tx(s,'readonly',o=>o.getAll());if(s==='config'){const c=rows.find(r=>r.id==='cfg');S.config=Object.assign({},CFG0,c||{});delete S.config.id;const n=rows.find(r=>r.id==='nube');if(n)N=Object.assign(N,n)}else S[s]=rows||[]}}
 /* put: guarda y marca el registro como pendiente de subir (_s=0) */
@@ -180,11 +192,13 @@ const MAP={
  animales:[['fincaId','finca_id'],['codigo'],['nombre'],['especie'],['sexo'],['fechaNac','fecha_nac','d'],['raza'],['proposito'],['loteId','lote_id'],['madreId','madre_id'],['padreId','padre_id'],['padreTxt','padre_txt'],['dieta'],['origen'],['fechaIngreso','fecha_ingreso','d'],['chip'],['nfc'],['qr'],['marca'],['notas'],['estado'],['fechaSalida','fecha_salida','d']],
  eventos:[['animalId','animal_id'],['fincaId','finca_id'],['tipo'],['fecha','fecha','d'],['datos','datos','j'],['notas']],
  archivos:[['fincaId','finca_id'],['animalId','animal_id'],['tipo'],['nombre'],['ruta'],['mime'],['tamano','tamano','n'],['fecha','fecha','d'],['notas'],['portada','portada','b']],
+ tareas:[['fincaId','finca_id'],['tipo'],['titulo'],['fecha','fecha','d'],['hora'],['animalId','animal_id'],['loteId','lote_id'],['repetir'],['notas'],['hecha','hecha','b'],['fechaHecha','fecha_hecha','d']],
  movimientos:[['fincaId','finca_id'],['tipo'],['categoria'],['fecha','fecha','d'],['monto','monto','n'],['descripcion'],['cantidad','cantidad','n'],['unidad'],['precioUnit','precio_unit','n'],['animalId','animal_id'],['loteId','lote_id'],['tercero'],['eventoId','evento_id']]
 };
 function toRow(s,o){const r={id:o.id,mod:o.mod||Date.now(),borrado:false};for(const [k,c=k,t] of MAP[s]){let v=o[k];if(t==='b')v=!!v;else if(v===''||v==null)v=t==='j'?{}:null;else if(t==='n')v=isNaN(Number(v))?null:Number(v);r[c]=v}return r}
 function fromRow(s,r){const o={id:r.id,mod:Number(r.mod)||0,_s:1};for(const [k,c=k,t] of MAP[s]){const v=r[c];o[k]=t==='b'?!!v:v==null?(t==='j'?{}:''):t==='n'?Number(v):v}return o}
-const Sync={sb:null,estado:'local',corriendo:false,timer:null,error:'',
+const faltaTabla=e=>/PGRST205|42P01|schema cache|does not exist/i.test(((e&&e.message)||'')+' '+((e&&e.code)||''));
+const Sync={sb:null,faltan:new Set(),estado:'local',corriendo:false,timer:null,error:'',
  activa(){return !!(N.url&&N.key)},
  cargarLib(){if(window.supabase)return Promise.resolve(true);const una=src=>new Promise(ok=>{const s=document.createElement('script');s.src=src;s.onload=()=>ok(!!window.supabase);s.onerror=()=>{s.remove();ok(false)};document.head.appendChild(s)});
   return (location.protocol.startsWith('http')?una('supabase.js'):Promise.resolve(false)).then(r=>r||una(SB_LIB))},
@@ -200,12 +214,12 @@ const Sync={sb:null,estado:'local',corriendo:false,timer:null,error:'',
    /* 0. Subir fotos y documentos pendientes */
    await subirArchivos(sb);
    /* 1. Subir cambios locales */
-   for(const s of DATA){const pend=S[s].filter(o=>o._s!==1);for(let i=0;i<pend.length;i+=400){const lote=pend.slice(i,i+400);const filas=lote.map(o=>toRow(s,o));const {error}=await sb.from(s).upsert(filas,{onConflict:'id'});if(error)throw new Error(s+': '+error.message);for(const f of filas){const act=S[s].find(x=>x.id===f.id);if(act&&act.mod===f.mod){act._s=1;await tx(s,'readwrite',x=>x.put(act))}}}}
-   const tombs=await tx('tombs','readonly',o=>o.getAll());for(const s of DATA){const ids=tombs.filter(t=>t.store===s).map(t=>t.rid);for(let i=0;i<ids.length;i+=200){if(s==='archivos'){const {data:rs}=await sb.from('archivos').select('ruta').in('id',ids.slice(i,i+200));const rutas=(rs||[]).map(r=>r.ruta).filter(Boolean);if(rutas.length)await sb.storage.from('archivos').remove(rutas)}const {error}=await sb.from(s).update({borrado:true,mod:Date.now()}).in('id',ids.slice(i,i+200));if(error)throw new Error(s+': '+error.message)}}
-   for(const t of tombs)await tx('tombs','readwrite',o=>o.delete(t.id));
+   for(const s of DATA){const pend=S[s].filter(o=>o._s!==1);for(let i=0;i<pend.length;i+=400){const lote=pend.slice(i,i+400);const filas=lote.map(o=>toRow(s,o));const {error}=await sb.from(s).upsert(filas,{onConflict:'id'});if(error){if(faltaTabla(error)){this.faltan.add(s);break}throw new Error(s+': '+error.message)}this.faltan.delete(s);for(const f of filas){const act=S[s].find(x=>x.id===f.id);if(act&&act.mod===f.mod){act._s=1;await tx(s,'readwrite',x=>x.put(act))}}}}
+   const tombs=await tx('tombs','readonly',o=>o.getAll());for(const s of DATA){const ids=tombs.filter(t=>t.store===s).map(t=>t.rid);for(let i=0;i<ids.length;i+=200){if(s==='archivos'){const {data:rs}=await sb.from('archivos').select('ruta').in('id',ids.slice(i,i+200));const rutas=(rs||[]).map(r=>r.ruta).filter(Boolean);if(rutas.length)await sb.storage.from('archivos').remove(rutas)}const {error}=await sb.from(s).update({borrado:true,mod:Date.now()}).in('id',ids.slice(i,i+200));if(error&&!faltaTabla(error))throw new Error(s+': '+error.message)}}
+   for(const t of tombs)if(!this.faltan.has(t.store))await tx('tombs','readwrite',o=>o.delete(t.id));
    if(N.cfgDirty){const {id,...datos}=S.config;const {error}=await sb.from('config').upsert({user_id:N.userId,datos,mod:N.cfgMod||Date.now()},{onConflict:'user_id'});if(error)throw new Error('config: '+error.message);N.cfgDirty=false;N.cfgModRemoto=N.cfgMod||Date.now()}
    /* 2. Bajar cambios de la nube */
-   for(const s of DATA){const desde=N.pull[s]||'1970-01-01T00:00:00Z';let off=0,max=desde;for(;;){const {data,error}=await sb.from(s).select('*').gt('updated_at',desde).order('updated_at').order('id').range(off,off+999);if(error)throw new Error(s+': '+error.message);
+   for(const s of DATA){const desde=N.pull[s]||'1970-01-01T00:00:00Z';let off=0,max=desde;for(;;){const {data,error}=await sb.from(s).select('*').gt('updated_at',desde).order('updated_at').order('id').range(off,off+999);if(error){if(faltaTabla(error)){this.faltan.add(s);break}throw new Error(s+': '+error.message)}
      for(const r of data){if(r.updated_at>max)max=r.updated_at;const loc=S[s].find(x=>x.id===r.id);
       if(r.borrado){if(loc){await delRaw(s,r.id);if(s==='archivos')await borrarBlob(r.id);cambios=true}continue}
       if(loc&&loc._s!==1&&(loc.mod||0)>(Number(r.mod)||0))continue;
@@ -216,7 +230,7 @@ const Sync={sb:null,estado:'local',corriendo:false,timer:null,error:'',
    N.ultimaSync=new Date().toISOString();await saveN();this.estado='ok';this.error=''}
   catch(e){this.estado=navigator.onLine?'error':'off';this.error=String(e.message||e);if(manual)toast('Error al sincronizar: '+this.error)}
   finally{this.corriendo=false;this.pinta()}
-  if(cambios){const r=(location.hash.replace(/^#\/?/,'')||'inicio').split('/')[0];if(!['animalform','evento','finca','param','masivo','nube','login'].includes(r))route();else setNav(r)}
+  if(cambios){const r=(location.hash.replace(/^#\/?/,'')||'inicio').split('/')[0];if(!['animalform','evento','finca','param','masivo','nube','login','tarea'].includes(r))route();else setNav(r)}
   if(manual&&this.estado==='ok')toast('Datos sincronizados ✓')},
  async entrar(email,pass,registro){const sb=await this.cliente();if(!sb)throw new Error(this.error||'Sin conexión: no se pudo cargar Supabase');
   const {data,error}=registro?await sb.auth.signUp({email,password:pass}):await sb.auth.signInWithPassword({email,password:pass});if(error)throw error;
@@ -283,18 +297,134 @@ function alertas(){const c=S.config,t=hoy(),out=[];
  }
  return out.sort((x,y)=>y.p-x.p)}
 
+/* ================= Agenda: tareas automáticas y programadas ================= */
+const TAREA_TIPOS=[['vacuna','💉','Vacunación'],['desparasitacion','🪱','Desparasitación'],['veterinario','🩺','Visita del veterinario'],['pesaje','⚖️','Pesaje'],['reproduccion','🧬','Reproducción'],['potreros','🌱','Potreros y pastos'],['compra','🛒','Compras e insumos'],['mantenimiento','🔧','Mantenimiento'],['otro','📌','Otra tarea']];
+const TT=k=>TAREA_TIPOS.find(x=>x[0]===k)||TAREA_TIPOS[TAREA_TIPOS.length-1];
+const REPETIR=[['','No se repite'],['d7','Cada semana'],['d14','Cada 2 semanas'],['m1','Cada mes'],['m2','Cada 2 meses'],['m3','Cada 3 meses'],['m4','Cada 4 meses'],['m6','Cada 6 meses'],['m12','Cada año']];
+const CAT_AG=[['','Todas'],['repro','🧬 Reproducción'],['sanidad','💉 Sanidad'],['manejo','🐮 Manejo'],['mias','📌 Mis tareas']];
+const addMeses=(f,n)=>{const d=D(f),dd=d.getDate();d.setDate(1);d.setMonth(d.getMonth()+n);d.setDate(Math.min(dd,new Date(d.getFullYear(),d.getMonth()+1,0).getDate()));return d.toISOString().slice(0,10)};
+const sigFecha=(f,rep,k=1)=>rep[0]==='d'?addDias(f,Number(rep.slice(1))*k):addMeses(f,Number(rep.slice(1))*k);
+const tareasF=()=>S.tareas.filter(t=>t.fincaId===S.config.fincaActual);
+const fmtDia=f=>D(f).toLocaleDateString('es-CR',{weekday:'short',day:'numeric',month:'short'});
+const AG={filtro:'',dia:null};
+
+/* Tareas que salen solas de los registros (no se guardan: se recalculan siempre) */
+function agendaAuto(){const c=S.config,t=hoy(),out=[];const add=o=>out.push(Object.assign({auto:true},o));
+ for(const a of animalesF()){const r=repro(a),et=etapa(a),esp=ESPECIES[a.especie]||ESPECIES.bovino,ev=evDe(a.id);
+  if(a.sexo==='H'){
+   if(r.partoEsp)add({a,fecha:r.partoEsp,ic:'🍼',cat:'repro',t:'Parto esperado',d:r.estado==='Preñada'?'Preñez confirmada':'Según el servicio; falta confirmar preñez',href:`#/evento/${a.id}/parto`,btn:'Registrar parto'});
+   if(r.partoEsp&&r.estado==='Preñada'&&r.lactando)add({a,fecha:addDias(r.partoEsp,-c.secarAntesParto),ic:'⏸️',cat:'repro',t:'Secar',d:`${c.secarAntesParto} días antes del parto`,href:`#/evento/${a.id}/secado`,btn:'Registrar secado'});
+   if(r.estado==='Servida'&&r.ultServ){const hasta=addDias(r.ultServ,c.celoHasta);
+    if(hasta>=t)add({a,fecha:addDias(r.ultServ,c.celoDesde)<t?t:addDias(r.ultServ,c.celoDesde),ic:'💗',cat:'repro',t:'Revisar si repite celo',d:`Observar hasta el ${fmtF(hasta)}`,href:`#/evento/${a.id}/celo`,btn:'Registrar celo',info:true});
+    add({a,fecha:addDias(r.ultServ,c.diasChequeo),ic:'🩺',cat:'repro',t:'Chequeo de preñez',d:`${c.diasChequeo} días después del servicio`,href:`#/evento/${a.id}/chequeo`,btn:'Registrar chequeo'})}
+   if(r.estado==='Vacía'&&et.i>=2){const uc=r.ultCelo&&(!r.ultParto||r.ultCelo>r.ultParto)?r.ultCelo:null;
+    if(uc){let f=addDias(uc,21);while(f<addDias(t,-2))f=addDias(f,21);add({a,fecha:f,ic:'💗',cat:'repro',t:'Celo esperado',d:`Ciclo de 21 días desde el celo del ${fmtF(uc)}`,href:`#/evento/${a.id}/servicio`,btn:'Registrar servicio',info:true})}
+    else if(r.ultParto&&et.i>=3)add({a,fecha:addDias(r.ultParto,c.esperaVol),ic:'🧬',cat:'repro',t:'Lista para servir',d:`${c.esperaVol} días después del parto`,href:`#/evento/${a.id}/servicio`,btn:'Registrar servicio'})}
+   if(r.lactando&&r.ultParto&&r.estado!=='Preñada')add({a,fecha:addDias(r.ultParto,c.secado),ic:'🥛',cat:'manejo',t:'Fin de lactancia',d:`${c.secado} días de ordeño; valorar secado`,href:`#/evento/${a.id}/secado`,btn:'Registrar secado'});
+  }
+  if(et.i===0&&a.fechaNac){const f=addMeses(a.fechaNac,esp.destete);if(f>=addDias(t,-30))add({a,fecha:f,ic:'🐮',cat:'manejo',t:'Destete',d:`A los ${esp.destete} meses de edad; pesar al destetar`,href:`#/evento/${a.id}/peso`,btn:'Registrar peso'})}
+  for(const e of ev){const d=e.datos||{};
+   if((e.tipo==='vacuna'||e.tipo==='desparasitacion')&&d.proxima&&!ev.some(x=>x.tipo===e.tipo&&x.fecha>e.fecha&&(x.datos||{}).producto===d.producto))
+    add({a,fecha:d.proxima,ic:TIPOS[e.tipo].ic,cat:'sanidad',t:(e.tipo==='vacuna'?'Vacuna':'Desparasitación')+(d.producto?': '+d.producto:''),d:'Próxima dosis',href:`#/evento/${a.id}/${e.tipo}`,btn:'Registrar',grp:e.tipo+'|'+(d.producto||''),masivo:e.tipo});
+   if(e.tipo==='tratamiento'){const fin=addDias(e.fecha,Number(d.duracion)||1),ret=addDias(fin,Number(d.retiro)||0);
+    if(fin>=t)add({a,fecha:fin,ic:'💊',cat:'sanidad',t:'Termina tratamiento',d:d.producto||d.tipoT||'',href:`#/animal/${a.id}/sanidad`,btn:'Ver',info:true});
+    if(Number(d.retiro)>0&&ret>=t)add({a,fecha:ret,ic:'✅',cat:'sanidad',t:'Termina el retiro',d:'Desde ese día se puede vender leche o carne',href:`#/animal/${a.id}/sanidad`,btn:'Ver',info:true})}}
+ }
+ return out}
+
+/* Tareas que anotás vos (se guardan y se sincronizan) */
+function agendaManual(desde,hasta){const out=[];
+ for(const ta of tareasF()){if(ta.hecha)continue;const a=ta.animalId?animal(ta.animalId):null;
+  const base={tarea:ta,a,ic:TT(ta.tipo)[1],cat:'mias',t:ta.titulo||TT(ta.tipo)[2],d:[ta.hora,a?nombreA(a):'',ta.loteId?'Lote: '+loteN(ta.loteId):'',ta.notas].filter(Boolean).join(' · '),href:accionTarea(ta)};
+  out.push(Object.assign({},base,{fecha:ta.fecha}));
+  if(ta.repetir)for(let k=1;k<400;k++){const f=sigFecha(ta.fecha,ta.repetir,k);if(f>hasta)break;if(f>=desde)out.push(Object.assign({},base,{fecha:f,virtual:true,href:null}))}}
+ return out}
+function accionTarea(ta){const ev={vacuna:'vacuna',desparasitacion:'desparasitacion',pesaje:'peso'}[ta.tipo];if(!ev)return null;
+ return ta.animalId?`#/evento/${ta.animalId}/${ev}`:`#/masivo/${ev}${ta.loteId?'/'+ta.loteId:''}`}
+
+/* Todo junto, ordenado; agrupa vacunas del mismo día y producto */
+function agendaItems(desde,hasta,agrupar=true){const t=hoy();
+ let it=agendaAuto().filter(x=>x.fecha<=hasta&&(x.fecha>=desde||(x.fecha<t&&!x.info&&x.fecha>=addDias(t,-180)&&desde<=t)));
+ if(agrupar){const g={},resto=[];for(const x of it){if(!x.grp){resto.push(x);continue}const k=x.fecha+'#'+x.grp;(g[k]=g[k]||[]).push(x)}
+  for(const xs of Object.values(g)){if(xs.length===1){resto.push(xs[0]);continue}const x=xs[0];const ns=xs.map(y=>y.a.codigo);
+   resto.push(Object.assign({},x,{a:null,grupo:xs.map(y=>y.a),d:`${xs.length} animales: ${ns.slice(0,6).join(', ')}${ns.length>6?' y '+(ns.length-6)+' más':''}`,href:`#/masivo/${x.masivo}`,btn:'Registrar en grupo'}))}
+  it=resto}
+ it=it.concat(agendaManual(desde,hasta).filter(x=>x.fecha<=hasta&&(x.fecha>=desde||x.fecha<t)));
+ return it.sort((x,y)=>x.fecha.localeCompare(y.fecha)||(x.tarea?1:0)-(y.tarea?1:0))}
+
+function agItem(x){const t=hoy(),atras=x.fecha<t&&!x.info;
+ const sub=[x.a&&!x.tarea?nombreA(x.a):'',x.d].filter(Boolean).join(' · ');
+ const lk=x.tarea?`#/tarea/${x.tarea.id}`:x.a?`#/animal/${x.a.id}`:x.href||'#/agenda';
+ const btn=x.virtual?'<span class="sub">🔁</span>':x.tarea?`${x.href?`<a class="btn sm sec" href="${x.href}" title="Registrar">✍️</a>`:''}<button class="btn sm" data-hecha="${x.tarea.id}" title="Marcar como hecha">✓</button>`:x.href?`<a class="btn sm sec" href="${x.href}">${x.btn==='Ver'?'Ver':'Registrar'}</a>`:'';
+ return`<div class="it ag ${x.cat}"><div class="av">${x.ic}</div><a class="sp lk" href="${lk}"><b>${esc(x.t)}</b><div class="sub">${esc(sub)}${atras?` · <span class="neg">atrasada ${dias(x.fecha,t)} d</span>`:''}</div></a>${btn}</div>`}
+
+async function marcarHecha(id){const ta=S.tareas.find(x=>x.id===id);if(!ta)return;ta.hecha=true;ta.fechaHecha=hoy();await put('tareas',ta);let msg='Tarea hecha ✓';
+ if(ta.repetir){let f=sigFecha(ta.fecha,ta.repetir);while(f<hoy())f=sigFecha(f,ta.repetir);const {id:_,hecha,fechaHecha,mod,_s,...resto}=ta;await put('tareas',Object.assign(resto,{id:uid(),fecha:f,hecha:false,fechaHecha:''}));msg+=' · Próxima: '+fmtF(f)}
+ toast(msg);route()}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-hecha]');if(b){e.preventDefault();marcarHecha(b.dataset.hecha)}});
+
+function agendaCard(){const t=hoy(),it=agendaItems(t,addDias(t,7)).filter(x=>!x.virtual||x.fecha<=addDias(t,7));
+ const atr=it.filter(x=>x.fecha<t&&!x.info),prox=it.filter(x=>x.fecha>=t);
+ return`<div class="card"><div class="row"><b>📅 Agenda · próximos 7 días</b><span class="sp"></span><a class="btn sm sec" href="#/agenda">Ver agenda</a></div>
+ ${atr.length?`<a class="al b" href="#/agenda" style="margin-top:10px"><div><div class="t">${atr.length} ${atr.length===1?'tarea atrasada':'tareas atrasadas'}</div><div class="sub">Tocá para verlas</div></div></a>`:''}
+ <div class="list">${prox.slice(0,6).map(x=>agItem(x)).join('')||'<div class="empty">Nada programado para esta semana.</div>'}${prox.length>6?`<a class="sub" href="#/agenda">y ${prox.length-6} más…</a>`:''}</div></div>`}
+
+const vAgenda=(modo,mes)=>{const t=hoy();const fl=x=>!AG.filtro||x.cat===AG.filtro;
+ const head=`<div class="row"><h2 style="margin:0">📅 Agenda</h2><span class="sp"></span><a class="btn sm" href="#/tarea/nueva">➕ Nueva tarea</a></div>
+ <div class="row" style="margin:10px 0 4px;gap:6px"><a class="btn sm ${modo==='mes'?'sec':''}" href="#/agenda">📋 Lista</a><a class="btn sm ${modo==='mes'?'':'sec'}" href="#/agenda/mes">🗓️ Mes</a></div>
+ <div class="tabs">${CAT_AG.map(([k,l])=>`<a href="#" data-fl="${k}" class="${AG.filtro===k?'on':''}">${l}</a>`).join('')}</div>
+ ${Sync.faltan&&Sync.faltan.has('tareas')?'<p class="tag w">Falta ejecutar el script 03-agenda.sql en Supabase: tus tareas se guardan en este teléfono pero todavía no en la nube.</p>':''}`;
+ let body='';
+ if(modo!=='mes'){const it=agendaItems(t,addDias(t,60)).filter(fl);const atr=it.filter(x=>x.fecha<t&&!x.info),fut=it.filter(x=>x.fecha>=t);
+  const grupos=[];for(const x of fut){const g=grupos[grupos.length-1];if(g&&g.f===x.fecha)g.xs.push(x);else grupos.push({f:x.fecha,xs:[x]})}
+  const titulo=f=>{const n=dias(t,f);return n===0?'Hoy':n===1?'Mañana':fmtDia(f)};
+  body=(atr.length?`<h3 class="neg">Atrasadas (${atr.length})</h3><div class="card list">${atr.map(agItem).join('')}</div>`:'')
+   +(grupos.length?grupos.map(g=>`<h3>${titulo(g.f)}${dias(t,g.f)>1?` <span class="sub">· en ${dias(t,g.f)} días</span>`:''}</h3><div class="card list">${g.xs.map(agItem).join('')}</div>`).join(''):'<div class="card empty">No hay tareas en los próximos 60 días.</div>')
+   +'<p class="sub">Las tareas automáticas salen de tus registros: partos esperados, secados, chequeos de preñez, celos, destetes, próximas vacunas y desparasitaciones. Se actualizan solas al registrar el evento. Los días se ajustan en Más → Parámetros.</p>'}
+ else{const m=mes||t.slice(0,7);const ini=m+'-01',fin=addDias(addMeses(ini,1),-1);const it=agendaItems(ini,fin).filter(x=>x.fecha>=ini&&fl(x));
+  const por={};for(const x of it)(por[x.fecha]=por[x.fecha]||[]).push(x);
+  if(!AG.dia||AG.dia.slice(0,7)!==m)AG.dia=t.slice(0,7)===m?t:ini;
+  const pad=(D(ini).getDay()+6)%7,nd=Number(fin.slice(8));let celdas='';for(let i=0;i<pad;i++)celdas+='<span></span>';
+  for(let d=1;d<=nd;d++){const f=m+'-'+String(d).padStart(2,'0'),xs=por[f]||[];const cats=[...new Set(xs.map(x=>x.cat))];
+   celdas+=`<button data-dia="${f}" class="${f===t?'hoy ':''}${f===AG.dia?'sel ':''}${xs.some(x=>x.fecha<t&&!x.info)?'atr':''}"><span>${d}</span>${xs.length?`<i>${cats.map(c=>`<em class="${c}"></em>`).join('')}</i><small>${xs.length}</small>`:''}</button>`}
+  let nom=D(ini).toLocaleDateString('es-CR',{month:'long'})+' '+ini.slice(0,4);nom=nom[0].toUpperCase()+nom.slice(1);const sel=por[AG.dia]||[];
+  body=`<div class="card"><div class="row"><a class="btn sm sec" href="#/agenda/mes/${addMeses(ini,-1).slice(0,7)}">◀</a><b class="sp" style="text-align:center">${nom}</b><a class="btn sm sec" href="#/agenda/mes/${addMeses(ini,1).slice(0,7)}">▶</a></div>
+   <div class="cal" style="margin-top:10px">${['L','M','M','J','V','S','D'].map(x=>`<span class="h">${x}</span>`).join('')}${celdas}</div>
+   <div class="ley"><span><em class="repro"></em>Reproducción</span><span><em class="sanidad"></em>Sanidad</span><span><em class="manejo"></em>Manejo</span><span><em class="mias"></em>Mis tareas</span></div></div>
+   <div class="row"><h3 style="flex:1">${fmtDia(AG.dia)}</h3><a class="btn sm sec" href="#/tarea/nueva//${AG.dia}">➕ Tarea este día</a></div><div class="card list">${sel.map(agItem).join('')||'<div class="empty">Nada para este día.</div>'}</div>`}
+ $('#app').innerHTML=head+body;
+ document.querySelectorAll('[data-fl]').forEach(b=>b.onclick=e=>{e.preventDefault();AG.filtro=b.dataset.fl;V.agenda(modo,mes)});
+ document.querySelectorAll('[data-dia]').forEach(b=>b.onclick=()=>{AG.dia=b.dataset.dia;V.agenda(modo,mes)})};
+
+const vTarea=(id,animalId,fecha)=>{const nueva=!id||id==='nueva';const ta=nueva?{tipo:'vacuna',fecha:fecha||hoy(),animalId:animalId||'',loteId:'',repetir:'',titulo:'',hora:'',notas:''}:S.tareas.find(x=>x.id===id);if(!ta)return go('#/agenda');
+ const ans=animalesF().sort((x,y)=>x.codigo.localeCompare(y.codigo,'es',{numeric:true}));
+ $('#app').innerHTML=`<h2>${nueva?'Nueva tarea':'Tarea'}</h2><form class="card" id="ft"><div class="f2">
+  <div><label>Tipo</label><select name="tipo">${selOpts(TAREA_TIPOS.map(x=>[x[0],x[1]+' '+x[2]]),ta.tipo)}</select></div>
+  <div><label>Título</label><input name="titulo" value="${esc(ta.titulo)}" placeholder="Ej.: Vacuna contra ántrax"></div>
+  <div><label>Fecha</label><input type="date" name="fecha" value="${ta.fecha}" required></div>
+  <div><label>Hora (opcional)</label><input type="time" name="hora" value="${esc(ta.hora||'')}"></div>
+  <div><label>Lote o potrero (opcional)</label><select name="loteId">${selOpts([['','Toda la finca'],...lotesF().map(l=>[l.id,l.nombre])],ta.loteId)}</select></div>
+  <div><label>Animal (opcional)</label><select name="animalId">${selOpts([['','Ninguno en particular'],...ans.map(a=>[a.id,nombreA(a)])],ta.animalId)}</select></div>
+  <div><label>Repetir</label><select name="repetir">${selOpts(REPETIR,ta.repetir)}</select></div></div>
+  <label>Notas</label><textarea name="notas" rows="2">${esc(ta.notas||'')}</textarea>
+  <div class="row" style="margin-top:14px"><button class="btn">Guardar</button><a class="btn sec" href="#/agenda">Cancelar</a>${nueva?'':`<span class="sp"></span>${ta.hecha?'<span class="tag">Hecha '+fmtF(ta.fechaHecha)+'</span>':`<button type="button" class="btn sec" data-hecha="${ta.id}">✓ Hecha</button>`}<button type="button" class="btn bad" id="tdel">Eliminar</button>`}</div></form>
+  <p class="sub">Si escogés un lote y el tipo es vacunación, desparasitación o pesaje, desde la agenda podés ir directo al registro masivo de ese lote.</p>`;
+ $('#ft').onsubmit=async ev=>{ev.preventDefault();const d=formData(ev.target);if(!d.titulo)d.titulo=TT(d.tipo)[2];
+  await put('tareas',Object.assign(nueva?{id:uid(),fincaId:S.config.fincaActual,hecha:false,fechaHecha:''}:ta,d));toast('Tarea guardada');go(animalId&&nueva?'#/animal/'+animalId:'#/agenda')};
+ if(!nueva)$('#tdel').onclick=async()=>{if(!confirm('¿Eliminar esta tarea'+(ta.repetir?' y sus repeticiones':'')+'?'))return;await del('tareas',ta.id);toast('Tarea eliminada');go('#/agenda')}};
+
 /* ================= Render base ================= */
-const NAV=[['inicio','🏠','Inicio'],['animales','🐄','Animales'],['masivo','📋','Registro'],['finanzas','💰','Finanzas'],['alertas','🔔','Alertas'],['mas','⚙️','Más']];
+const NAV=[['inicio','🏠','Inicio'],['animales','🐄','Animales'],['agenda','📅','Agenda'],['masivo','📋','Registro'],['finanzas','💰','Finanzas'],['alertas','🔔','Alertas'],['mas','⚙️','Más']];
 function setNav(r){const n=alertas().length;$('#nav').innerHTML=NAV.map(([k,i,l])=>`<a href="#/${k}" class="${r===k?'on':''}"><b>${i}</b>${l}${k==='alertas'&&n?`<span class="dot">${n}</span>`:''}</a>`).join('')}
 function setFincas(){const s=$('#fsel');s.innerHTML=S.fincas.map(f=>`<option value="${f.id}" ${f.id===S.config.fincaActual?'selected':''}>${esc(f.nombre)}</option>`).join('');s.style.display=S.fincas.length?'':'none'}
 $('#fsel').onchange=async e=>{S.config.fincaActual=e.target.value;await saveCfg();route()};
-const V={};
+const V={};V.agenda=vAgenda;V.tarea=vTarea;
 function route(){const h=location.hash.replace(/^#\/?/,'')||'inicio';const [r,...p]=h.split('/');
  setFincas();Sync.pinta();
  if(Sync.necesitaLogin&&r!=='nube'){return V.login()}
  if(r==='nube'){setNav('mas');$('#ttl').textContent='Nube';return V.nube()}
  if(!F()&&r!=='finca'){return V.bienvenida()}
- const fn=V[r]||V.inicio;setNav({animal:'animales',animalform:'animales',evento:'animales',mov:'finanzas',archivo:'animales'}[r]||r);$('#ttl').textContent=F()?F().nombre:'Mi Ganado';fn(...p.map(decodeURIComponent));window.scrollTo(0,0)}
+ const fn=V[r]||V.inicio;setNav({animal:'animales',animalform:'animales',evento:'animales',mov:'finanzas',archivo:'animales',tarea:'agenda'}[r]||r);$('#ttl').textContent=F()?F().nombre:'Mi Ganado';fn(...p.map(decodeURIComponent));window.scrollTo(0,0)}
 window.onhashchange=route;
 const go=h=>location.hash=h;
 function selOpts(arr,val,vacia){return(vacia?`<option value="">${vacia}</option>`:'')+arr.map(o=>{const [v,l]=Array.isArray(o)?o:[o,o];return`<option value="${esc(v)}" ${String(v)===String(val??'')?'selected':''}>${esc(l)}</option>`}).join('')}
@@ -317,6 +447,7 @@ V.inicio=()=>{const an=animalesF(),t=hoy();const H=an.filter(a=>a.sexo==='H'),M=
   <div class="stat"><div class="v">${pre}</div><div class="l">Preñadas</div></div>
   <div class="stat"><div class="v">${ult?num(ult.v):'—'}</div><div class="l">Litros ${ult?'('+fmtF(ult.f)+')':'último día'}</div></div>
   <div class="stat"><div class="v">${al.length}</div><div class="l">Alertas</div></div></div>
+ ${agendaCard()}
  <div class="card"><div class="row"><b>Producción de leche · 14 días</b><span class="sp"></span><a class="btn sm sec" href="#/masivo/leche">Registrar</a></div>
   <div class="bars" style="margin-bottom:20px">${dia.map(d=>`<div title="${fmtF(d.f)}: ${num(d.v)} L" style="height:${d.v/mx*100}%"><span>${D(d.f).getDate()}</span></div>`).join('')}</div></div>
  ${finResumenCard()}
@@ -390,7 +521,8 @@ V.animal=(id,tab='general')=>{const a=animal(id);if(!a)return go('#/animales');c
  const acc=Object.entries(TIPOS).filter(([k,t])=>(!t.sexo||t.sexo===a.sexo)&&a.estado==='activo');
  $('#app').innerHTML=`<div class="card"><div class="row"><a class="avl" href="#/animal/${id}/archivos" title="Fotos">${avHtml(a,60)}<i>📷</i></a><div class="sp"><h2 style="margin:0">${esc(a.codigo)} ${esc(a.nombre||'')}</h2><div class="sub">${et.n} · ${edadTxt(a.fechaNac)} · ${esc(a.raza||'')}</div></div><a class="btn sm sec" href="#/animalform/${id}">Editar</a></div>
  <div style="margin-top:8px">${a.estado!=='activo'?`<span class="tag b">${a.estado==='vendido'?'Vendido':'Muerto'}</span>`:''}${a.sexo==='H'&&r.estado?`<span class="tag ${r.estado==='Preñada'?'':'g'}">${r.estado}</span>`:''}${r.lactando?'<span class="tag i">En ordeño</span>':''}${s.map(x=>`<span class="tag ${x.k==='mast'?'b':'w'}">${esc(x.txt)}</span>`).join('')}</div></div>
- ${acc.length?`<h3>Registrar</h3><div class="acts">${acc.map(([k,t])=>`<a class="btn sec sm" href="#/evento/${id}/${k}">${t.ic} ${t.n}</a>`).join('')}</div>`:''}
+ ${(()=>{const px=agendaItems(hoy(),addDias(hoy(),60),false).filter(x=>(x.a&&x.a.id===id)&&!x.virtual).slice(0,4);return px.length?`<div class="card list" style="margin-top:10px"><b>📅 Próximo en la agenda</b>${px.map(agItem).join('')}</div>`:''})()}
+ ${acc.length?`<h3>Registrar</h3><div class="acts">${acc.map(([k,t])=>`<a class="btn sec sm" href="#/evento/${id}/${k}">${t.ic} ${t.n}</a>`).join('')}<a class="btn sm" href="#/tarea/nueva/${id}">📅 Programar tarea</a></div>`:''}
  <div class="tabs">${T('general','General')}${T('repro','Reproducción')}${T('prod','Producción')}${T('sanidad','Sanidad')}${T('archivos','📷 Fotos y docs')}${T('finanzas','💰 Finanzas')}${T('historial','Historial')}</div>${body}
  <div class="row" style="margin-top:16px">${a.estado!=='activo'?`<button class="btn sm sec" id="react">Reactivar animal</button>`:''}<span class="sp"></span><button class="btn sm bad" id="borrar">Eliminar animal</button></div>`;
  hidratar();if(tab==='archivos')archivosEventos(a);
@@ -428,10 +560,10 @@ async function registrar(a,tipo,fecha,datos,notas){const e={id:uid(),animalId:a.
   if(datos.pesoCria)await put('eventos',{id:uid(),animalId:c.id,fincaId:c.fincaId,tipo:'peso',fecha,datos:{valor:Number(datos.pesoCria)},notas:'Peso al nacer'})}}
 
 /* ---------- Registro masivo ---------- */
-V.masivo=(tipo)=>{if(!tipo){$('#app').innerHTML=`<h2>Registro masivo</h2><div class="acts">
+V.masivo=(tipo,loteP)=>{if(!tipo){$('#app').innerHTML=`<h2>Registro masivo</h2><div class="acts">
  <a class="btn sec" href="#/masivo/leche">🥛 Ordeño del día</a><a class="btn sec" href="#/masivo/peso">⚖️ Pesaje</a><a class="btn sec" href="#/masivo/vacuna">💉 Vacunación</a><a class="btn sec" href="#/masivo/desparasitacion">🪱 Desparasitación</a><a class="btn sec" href="#/masivo/tratamiento">💊 Tratamiento</a><a class="btn sec" href="#/masivo/lote">🔀 Mover de lote</a></div><p class="sub" style="margin-top:14px">Registra un dato para muchos animales a la vez.</p>`;return}
- const t=TIPOS[tipo];const ls=lotesF();let lote='';
- const base=`<h2>${t.ic} ${tipo==='leche'?'Ordeño del día':t.n+' masivo'}</h2><div class="card"><div class="f2"><div><label>Fecha</label><input type="date" id="mf" value="${hoy()}" max="${hoy()}"></div><div><label>Filtrar por lote</label><select id="ml">${selOpts([['','Todos'],...ls.map(l=>[l.id,l.nombre])],'')}</select></div></div></div>`;
+ const t=TIPOS[tipo];const ls=lotesF();let lote=loteP&&ls.some(l=>l.id===loteP)?loteP:'';
+ const base=`<h2>${t.ic} ${tipo==='leche'?'Ordeño del día':t.n+' masivo'}</h2><div class="card"><div class="f2"><div><label>Fecha</label><input type="date" id="mf" value="${hoy()}" max="${hoy()}"></div><div><label>Filtrar por lote</label><select id="ml">${selOpts([['','Todos'],...ls.map(l=>[l.id,l.nombre])],lote)}</select></div></div></div>`;
  if(tipo==='leche'||tipo==='peso'){$('#app').innerHTML=base+`<div class="card" id="mlst"></div><button class="btn" id="mok">Guardar registros</button>`;
   const pinta=()=>{let an=animalesF().filter(a=>!lote||a.loteId===lote);if(tipo==='leche')an=an.filter(a=>a.sexo==='H'&&repro(a).lactando);an.sort((x,y)=>x.codigo.localeCompare(y.codigo,'es',{numeric:true}));
    $('#mlst').innerHTML=an.length?(tipo==='leche'?`<div class="mi"><b class="sub">Animal</b><b class="sub">Mañana</b><b class="sub">Tarde</b></div>`:'')+an.map(a=>tipo==='leche'?`<div class="mi"><div>${esc(nombreA(a))}<div class="sub">${repro(a).diasLact} d lact.</div></div><input type="number" step="any" min="0" data-a="${a.id}" data-k="manana" inputmode="decimal"><input type="number" step="any" min="0" data-a="${a.id}" data-k="tarde" inputmode="decimal"></div>`:`<div class="mi one"><div>${esc(nombreA(a))}<div class="sub">Último: ${ultPeso(a)?num(ultPeso(a).kg)+' kg':'—'}</div></div><input type="number" step="any" min="0" data-a="${a.id}" data-k="valor" placeholder="kg" inputmode="decimal"></div>`).join(''):`<div class="empty">${tipo==='leche'?'No hay vacas en ordeño. Registra un parto para que aparezcan aquí.':'No hay animales.'}</div>`};
@@ -476,7 +608,7 @@ V.mas=()=>{$('#app').innerHTML=`<h2>Más</h2><div class="card list">
  <a class="it" href="#/nube"><div class="av">☁️</div><div class="sp"><b>Nube y cuenta</b><div class="sub">${N.userId?'Conectado como '+esc(N.email):'Guardar los datos en Supabase'}</div></div></a>
  <a class="it" href="#/respaldo"><div class="av">💾</div><div class="sp"><b>Respaldo de datos</b><div class="sub">Guardar o restaurar una copia</div></div></a>
  <a class="it" href="#/finca/nueva"><div class="av">➕</div><div class="sp"><b>Agregar otra finca</b></div></a></div>
- <p class="sub">Mi Ganado v3 · ${N.userId?'Datos guardados en este dispositivo y en la nube.':'Los datos se guardan solo en este dispositivo y navegador.'}</p>`};
+ <p class="sub">Mi Ganado v4 · ${N.userId?'Datos guardados en este dispositivo y en la nube.':'Los datos se guardan solo en este dispositivo y navegador.'}</p>`};
 V.login=()=>{setNav('');$('#ttl').textContent='Mi Ganado';$('#nav').innerHTML='';
  $('#app').innerHTML=`<div class="card"><h2>Iniciar sesión</h2><p class="sub">Tus datos se guardan de forma segura en la nube y solo tú puedes verlos.</p>
  <form id="fli"><label>Correo electrónico</label><input type="email" name="email" required autocomplete="email" value="${esc(N.email)}"><label>Contraseña</label><input type="password" name="pass" required minlength="6" autocomplete="current-password">
@@ -515,7 +647,7 @@ V.param=()=>{const c=S.config;const P=[['secado','Días de lactancia para sugeri
  $('#app').innerHTML=`<h2>Parámetros de alertas</h2><form class="card" id="fp"><div class="f2">${P.map(([k,l])=>`<div><label>${l}</label><input type="number" min="0" name="${k}" value="${c[k]}"></div>`).join('')}</div><div class="f2"><div><label>Moneda</label><select name="moneda">${selOpts([['₡','₡ Colones'],['$','$ Dólares']],c.moneda)}</select></div></div><p class="sub">Gestación usada: ${Object.values(ESPECIES).map(e=>e.n+' '+e.gest+' d').join(' · ')}</p><button class="btn">Guardar</button></form>`;
  $('#fp').onsubmit=async ev=>{ev.preventDefault();const d=formData(ev.target);for(const k in d)c[k]=k==='moneda'?d[k]:Number(d[k]);await saveCfg();toast('Parámetros guardados');go('#/mas')}};
 V.respaldo=()=>{$('#app').innerHTML=`<h2>Respaldo de datos</h2><div class="card"><p>Los datos viven solo en este navegador. Si se borra el historial del navegador o cambias de teléfono, se pierden. <b>Descarga un respaldo cada semana</b> y guárdalo en Drive o en tu computadora.</p><p class="sub">El respaldo incluye todos los registros y finanzas; las fotos y documentos quedan guardados en la nube.</p><button class="btn" id="exp">⬇️ Descargar respaldo</button></div><div class="card"><b>Restaurar respaldo</b><p class="sub">Reemplaza todos los datos actuales por los del archivo.</p><input type="file" accept=".json" id="imp"></div>`;
- $('#exp').onclick=()=>{descargar(JSON.stringify({app:'mi-ganado',v:1,fecha:new Date().toISOString(),datos:{fincas:S.fincas,lotes:S.lotes,animales:S.animales,eventos:S.eventos,archivos:S.archivos,movimientos:S.movimientos,config:S.config}},null,1),`respaldo-mi-ganado-${hoy()}.json`,'application/json');S.config.ultimoRespaldo=hoy();saveCfg()};$('#imp').onchange=importar};
+ $('#exp').onclick=()=>{descargar(JSON.stringify({app:'mi-ganado',v:1,fecha:new Date().toISOString(),datos:{fincas:S.fincas,lotes:S.lotes,animales:S.animales,eventos:S.eventos,archivos:S.archivos,movimientos:S.movimientos,tareas:S.tareas,config:S.config}},null,1),`respaldo-mi-ganado-${hoy()}.json`,'application/json');S.config.ultimoRespaldo=hoy();saveCfg()};$('#imp').onchange=importar};
 async function importar(ev){const file=ev.target.files[0];if(!file)return;try{const j=JSON.parse(await file.text());if(j.app!=='mi-ganado')throw 0;if(S.fincas.length&&!confirm('Esto reemplazará todos los datos actuales. ¿Continuar?'))return;
  for(const s of STORES)await tx(s,'readwrite',o=>o.clear());await saveN();for(const s of DATA)for(const r of j.datos[s]||[]){r._s=0;r.mod=r.mod||Date.now();await tx(s,'readwrite',o=>o.put(r))}S.config=Object.assign({},CFG0,j.datos.config||{});delete S.config.id;await saveCfg();await loadAll();toast('Respaldo restaurado');go('#/inicio');route()}catch(e){toast('Archivo de respaldo no válido')}}
 

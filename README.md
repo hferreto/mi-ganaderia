@@ -18,6 +18,7 @@ alertas, fotos y documentos, y finanzas. Funciona sin internet y sincroniza con 
 - **v1** – App local (IndexedDB): fincas, lotes, animales, eventos, alertas, informes.
 - **v2** – Nube con Supabase, inicio de sesión, sincronización sin conexión, instalable (PWA).
 - **v3** – Fotos y documentos por animal (Supabase Storage) y módulo de finanzas.
+- **v4** – Agenda: calendario con tareas automáticas (partos, secados, chequeos, celos, destetes, vacunas) y tareas propias que se repiten. Requiere `supabase/03-agenda.sql`.
 
 ## Publicar una versión nueva
 
