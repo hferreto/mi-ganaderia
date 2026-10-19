@@ -91,6 +91,7 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 .hb .b div{height:100%;background:var(--pri);border-radius:7px}
 .hb .v{font-size:12.5px;color:var(--muted);min-width:86px;text-align:right}
 .pos{color:var(--pri)}.neg{color:var(--bad)}
+[hidden]{display:none!important}
 .lk{text-decoration:none;color:inherit;min-width:0}.ag .btn{flex:none;white-space:nowrap}
 .ag .av{background:var(--pri2)}.ag.sanidad .av{background:var(--info2)}.ag.manejo .av{background:var(--warn2)}.ag.mias .av{background:var(--bad2)}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
@@ -214,11 +215,12 @@ const Sync={sb:null,faltan:new Set(),estado:'local',corriendo:false,timer:null,e
    /* 0. Subir fotos y documentos pendientes */
    await subirArchivos(sb);
    /* 1. Subir cambios locales */
-   for(const s of DATA){const pend=S[s].filter(o=>o._s!==1);for(let i=0;i<pend.length;i+=400){const lote=pend.slice(i,i+400);const filas=lote.map(o=>toRow(s,o));const {error}=await sb.from(s).upsert(filas,{onConflict:'id'});if(error){if(faltaTabla(error)){this.faltan.add(s);break}throw new Error(s+': '+error.message)}this.faltan.delete(s);for(const f of filas){const act=S[s].find(x=>x.id===f.id);if(act&&act.mod===f.mod){act._s=1;await tx(s,'readwrite',x=>x.put(act))}}}}
+   for(const s of DATA){const pend=S[s].filter(o=>o._s!==1);for(let i=0;i<pend.length;i+=400){const lote=pend.slice(i,i+400);const filas=lote.map(o=>toRow(s,o));const {error}=await sb.from(s).upsert(filas,{onConflict:'id'});if(error){if(faltaTabla(error)){this.faltan.add(s);break}if(/row-level security|42501/i.test(error.message+' '+error.code)){for(const f of filas){const act=S[s].find(x=>x.id===f.id);if(act){act._s=1;await tx(s,'readwrite',x=>x.put(act))}}this.sinPermiso=true;continue}throw new Error(s+': '+error.message)}this.faltan.delete(s);for(const f of filas){const act=S[s].find(x=>x.id===f.id);if(act&&act.mod===f.mod){act._s=1;await tx(s,'readwrite',x=>x.put(act))}}}}
    const tombs=await tx('tombs','readonly',o=>o.getAll());for(const s of DATA){const ids=tombs.filter(t=>t.store===s).map(t=>t.rid);for(let i=0;i<ids.length;i+=200){if(s==='archivos'){const {data:rs}=await sb.from('archivos').select('ruta').in('id',ids.slice(i,i+200));const rutas=(rs||[]).map(r=>r.ruta).filter(Boolean);if(rutas.length)await sb.storage.from('archivos').remove(rutas)}const {error}=await sb.from(s).update({borrado:true,mod:Date.now()}).in('id',ids.slice(i,i+200));if(error&&!faltaTabla(error))throw new Error(s+': '+error.message)}}
    for(const t of tombs)if(!this.faltan.has(t.store))await tx('tombs','readwrite',o=>o.delete(t.id));
    if(N.cfgDirty){const {id,...datos}=S.config;const {error}=await sb.from('config').upsert({user_id:N.userId,datos,mod:N.cfgMod||Date.now()},{onConflict:'user_id'});if(error)throw new Error('config: '+error.message);N.cfgDirty=false;N.cfgModRemoto=N.cfgMod||Date.now()}
    /* 2. Bajar cambios de la nube */
+   {const {data:rs,error:er}=await sb.rpc('mg_mis_fincas');if(!er&&rs){const nr=Object.fromEntries(rs.map(x=>[x.finca_id,x.rol]));if(JSON.stringify(nr)!==JSON.stringify(N.roles||{}))cambios=true;N.roles=nr}}
    for(const s of DATA){const desde=N.pull[s]||'1970-01-01T00:00:00Z';let off=0,max=desde;for(;;){const {data,error}=await sb.from(s).select('*').gt('updated_at',desde).order('updated_at').order('id').range(off,off+999);if(error){if(faltaTabla(error)){this.faltan.add(s);break}throw new Error(s+': '+error.message)}
      for(const r of data){if(r.updated_at>max)max=r.updated_at;const loc=S[s].find(x=>x.id===r.id);
       if(r.borrado){if(loc){await delRaw(s,r.id);if(s==='archivos')await borrarBlob(r.id);cambios=true}continue}
@@ -230,7 +232,8 @@ const Sync={sb:null,faltan:new Set(),estado:'local',corriendo:false,timer:null,e
    N.ultimaSync=new Date().toISOString();await saveN();this.estado='ok';this.error=''}
   catch(e){this.estado=navigator.onLine?'error':'off';this.error=String(e.message||e);if(manual)toast('Error al sincronizar: '+this.error)}
   finally{this.corriendo=false;this.pinta()}
-  if(cambios){const r=(location.hash.replace(/^#\/?/,'')||'inicio').split('/')[0];if(!['animalform','evento','finca','param','masivo','nube','login','tarea'].includes(r))route();else setNav(r)}
+  if(cambios){const r=(location.hash.replace(/^#\/?/,'')||'inicio').split('/')[0];if(!['animalform','evento','finca','param','masivo','nube','login','tarea','leer','equipo'].includes(r))route();else setNav(r)}
+  if(this.sinPermiso){this.sinPermiso=false;toast('Algunos cambios no se subieron porque tu rol no lo permite')}
   if(manual&&this.estado==='ok')toast('Datos sincronizados ✓')},
  async entrar(email,pass,registro){const sb=await this.cliente();if(!sb)throw new Error(this.error||'Sin conexión: no se pudo cargar Supabase');
   const {data,error}=registro?await sb.auth.signUp({email,password:pass}):await sb.auth.signInWithPassword({email,password:pass});if(error)throw error;
@@ -356,7 +359,7 @@ function agendaItems(desde,hasta,agrupar=true){const t=hoy();
 function agItem(x){const t=hoy(),atras=x.fecha<t&&!x.info;
  const sub=[x.a&&!x.tarea?nombreA(x.a):'',x.d].filter(Boolean).join(' · ');
  const lk=x.tarea?`#/tarea/${x.tarea.id}`:x.a?`#/animal/${x.a.id}`:x.href||'#/agenda';
- const btn=x.virtual?'<span class="sub">🔁</span>':x.tarea?`${x.href?`<a class="btn sm sec" href="${x.href}" title="Registrar">✍️</a>`:''}<button class="btn sm" data-hecha="${x.tarea.id}" title="Marcar como hecha">✓</button>`:x.href?`<a class="btn sm sec" href="${x.href}">${x.btn==='Ver'?'Ver':'Registrar'}</a>`:'';
+ const btn=!puede('registrar')?'':x.virtual?'<span class="sub">🔁</span>':x.tarea?`${x.href?`<a class="btn sm sec" href="${x.href}" title="Registrar">✍️</a>`:''}<button class="btn sm" data-hecha="${x.tarea.id}" title="Marcar como hecha">✓</button>`:x.href?`<a class="btn sm sec" href="${x.href}">${x.btn==='Ver'?'Ver':'Registrar'}</a>`:'';
  return`<div class="it ag ${x.cat}"><div class="av">${x.ic}</div><a class="sp lk" href="${lk}"><b>${esc(x.t)}</b><div class="sub">${esc(sub)}${atras?` · <span class="neg">atrasada ${dias(x.fecha,t)} d</span>`:''}</div></a>${btn}</div>`}
 
 async function marcarHecha(id){const ta=S.tareas.find(x=>x.id===id);if(!ta)return;ta.hecha=true;ta.fechaHecha=hoy();await put('tareas',ta);let msg='Tarea hecha ✓';
@@ -371,7 +374,7 @@ function agendaCard(){const t=hoy(),it=agendaItems(t,addDias(t,7)).filter(x=>!x.
  <div class="list">${prox.slice(0,6).map(x=>agItem(x)).join('')||'<div class="empty">Nada programado para esta semana.</div>'}${prox.length>6?`<a class="sub" href="#/agenda">y ${prox.length-6} más…</a>`:''}</div></div>`}
 
 const vAgenda=(modo,mes)=>{const t=hoy();const fl=x=>!AG.filtro||x.cat===AG.filtro;
- const head=`<div class="row"><h2 style="margin:0">📅 Agenda</h2><span class="sp"></span><a class="btn sm" href="#/tarea/nueva">➕ Nueva tarea</a></div>
+ const head=`<div class="row"><h2 style="margin:0">📅 Agenda</h2><span class="sp"></span>${puede('registrar')?'<a class="btn sm" href="#/tarea/nueva">➕ Nueva tarea</a>':''}</div>
  <div class="row" style="margin:10px 0 4px;gap:6px"><a class="btn sm ${modo==='mes'?'sec':''}" href="#/agenda">📋 Lista</a><a class="btn sm ${modo==='mes'?'':'sec'}" href="#/agenda/mes">🗓️ Mes</a></div>
  <div class="tabs">${CAT_AG.map(([k,l])=>`<a href="#" data-fl="${k}" class="${AG.filtro===k?'on':''}">${l}</a>`).join('')}</div>
  ${Sync.faltan&&Sync.faltan.has('tareas')?'<p class="tag w">Falta ejecutar el script 03-agenda.sql en Supabase: tus tareas se guardan en este teléfono pero todavía no en la nube.</p>':''}`;
@@ -392,7 +395,7 @@ const vAgenda=(modo,mes)=>{const t=hoy();const fl=x=>!AG.filtro||x.cat===AG.filt
   body=`<div class="card"><div class="row"><a class="btn sm sec" href="#/agenda/mes/${addMeses(ini,-1).slice(0,7)}">◀</a><b class="sp" style="text-align:center">${nom}</b><a class="btn sm sec" href="#/agenda/mes/${addMeses(ini,1).slice(0,7)}">▶</a></div>
    <div class="cal" style="margin-top:10px">${['L','M','M','J','V','S','D'].map(x=>`<span class="h">${x}</span>`).join('')}${celdas}</div>
    <div class="ley"><span><em class="repro"></em>Reproducción</span><span><em class="sanidad"></em>Sanidad</span><span><em class="manejo"></em>Manejo</span><span><em class="mias"></em>Mis tareas</span></div></div>
-   <div class="row"><h3 style="flex:1">${fmtDia(AG.dia)}</h3><a class="btn sm sec" href="#/tarea/nueva//${AG.dia}">➕ Tarea este día</a></div><div class="card list">${sel.map(agItem).join('')||'<div class="empty">Nada para este día.</div>'}</div>`}
+   <div class="row"><h3 style="flex:1">${fmtDia(AG.dia)}</h3>${puede('registrar')?`<a class="btn sm sec" href="#/tarea/nueva//${AG.dia}">➕ Tarea este día</a>`:''}</div><div class="card list">${sel.map(agItem).join('')||'<div class="empty">Nada para este día.</div>'}</div>`}
  $('#app').innerHTML=head+body;
  document.querySelectorAll('[data-fl]').forEach(b=>b.onclick=e=>{e.preventDefault();AG.filtro=b.dataset.fl;V.agenda(modo,mes)});
  document.querySelectorAll('[data-dia]').forEach(b=>b.onclick=()=>{AG.dia=b.dataset.dia;V.agenda(modo,mes)})};
@@ -416,16 +419,96 @@ const vTarea=(id,animalId,fecha)=>{const nueva=!id||id==='nueva';const ta=nueva?
 
 /* ================= Render base ================= */
 const NAV=[['inicio','🏠','Inicio'],['animales','🐄','Animales'],['agenda','📅','Agenda'],['masivo','📋','Registro'],['finanzas','💰','Finanzas'],['alertas','🔔','Alertas'],['mas','⚙️','Más']];
-function setNav(r){const n=alertas().length;$('#nav').innerHTML=NAV.map(([k,i,l])=>`<a href="#/${k}" class="${r===k?'on':''}"><b>${i}</b>${l}${k==='alertas'&&n?`<span class="dot">${n}</span>`:''}</a>`).join('')}
+function setNav(r){const n=alertas().length;$('#nav').innerHTML=NAV.filter(([k])=>(k!=='finanzas'||puede('finanzas'))&&(k!=='masivo'||puede('registrar'))).map(([k,i,l])=>`<a href="#/${k}" class="${r===k?'on':''}"><b>${i}</b>${l}${k==='alertas'&&n?`<span class="dot">${n}</span>`:''}</a>`).join('')}
 function setFincas(){const s=$('#fsel');s.innerHTML=S.fincas.map(f=>`<option value="${f.id}" ${f.id===S.config.fincaActual?'selected':''}>${esc(f.nombre)}</option>`).join('');s.style.display=S.fincas.length?'':'none'}
 $('#fsel').onchange=async e=>{S.config.fincaActual=e.target.value;await saveCfg();route()};
 const V={};V.agenda=vAgenda;V.tarea=vTarea;
+/* ================= Roles y permisos ================= */
+const ROLES={propietario:'Propietario',administrador:'Administrador',veterinario:'Veterinario',peon:'Peón',visitante:'Visitante'};
+const ROL_TXT={administrador:'Todo, menos manejar trabajadores',veterinario:'Ve todo menos finanzas; registra eventos, fotos y tareas',peon:'Ve todo menos finanzas; registra eventos, fotos y tareas (sin ventas ni borrar)',visitante:'Solo puede ver (sin finanzas)'};
+const PERM={finanzas:['propietario','administrador'],registrar:['propietario','administrador','veterinario','peon'],vender:['propietario','administrador'],borrar:['propietario','administrador'],finca:['propietario','administrador'],equipo:['propietario']};
+function rol(f){f=f||S.config.fincaActual;if(!N.userId||!N.roles)return'propietario';if(N.roles[f])return N.roles[f];const fi=S.fincas.find(x=>x.id===f);return fi&&fi._s!==1?'propietario':'visitante'}
+const puede=p=>PERM[p].includes(rol());
+
+/* ================= Lectura de aretes (lector Bluetooth en modo teclado, NFC del teléfono o a mano) ================= */
+const normA=s=>String(s||'').replace(/[^0-9a-z]/gi,'').toUpperCase();
+function buscarArete(code){const n=normA(code);if(!n)return null;const an=animalesF(true);
+ const exacto=an.find(a=>[a.chip,a.nfc,a.qr,a.marca,a.codigo].some(v=>v&&normA(v)===n));if(exacto)return exacto;
+ if(n.length>=8)return an.find(a=>[a.chip,a.nfc].some(v=>{const m=normA(v);return m.length>=8&&(m.endsWith(n)||n.endsWith(m))}))||null;return null}
+const LEER={modo:'buscar',lote:'',leidos:[],ult:{c:'',t:0},nfc:null};
+function nfcDisponible(){return'NDEFReader' in window}
+async function iniciarNfc(cb){if(!nfcDisponible())return toast('Este teléfono o navegador no tiene NFC web (se necesita Chrome en Android)');
+ try{const r=new NDEFReader();const ac=new AbortController();LEER.nfc=ac;await r.scan({signal:ac.signal});toast('NFC activo: acercá el arete a la parte de atrás del teléfono');
+  r.onreading=e=>cb(e.serialNumber||'');r.onreadingerror=()=>toast('No se pudo leer ese arete con NFC')}catch(e){toast('NFC: '+(e.message||e))}}
+function pararNfc(){if(LEER.nfc){LEER.nfc.abort();LEER.nfc=null}}
+window.addEventListener('hashchange',()=>{if(!location.hash.startsWith('#/leer'))pararNfc()});
+
+V.leer=(modo)=>{LEER.modo=modo==='inventario'?'inventario':'buscar';const inv=LEER.modo==='inventario';
+ $('#app').innerHTML=`<h2>📡 Leer arete</h2>
+ <div class="row" style="gap:6px;margin-bottom:10px"><a class="btn sm ${inv?'sec':''}" href="#/leer">🔎 Buscar animal</a><a class="btn sm ${inv?'':'sec'}" href="#/leer/inventario">📋 Inventario rápido</a></div>
+ ${inv?`<div class="card"><label>Lote o potrero a revisar</label><select id="ilote">${selOpts([['','Toda la finca'],...lotesF().map(l=>[l.id,l.nombre])],LEER.lote)}</select></div>`:''}
+ <form class="card" id="flee"><label>Número del arete</label><div class="row"><input id="aret" class="sp" autocomplete="off" placeholder="Pasá el lector o escribí el número" autofocus><button class="btn">${inv?'Agregar':'Buscar'}</button></div>
+ <p class="sub" style="margin-bottom:0">Con un <b>lector Bluetooth en modo teclado</b>, el número se escribe solo aquí. Dejá el cursor en esta casilla.</p>
+ ${nfcDisponible()?'<button type="button" class="btn sec" id="bnfc" style="margin-top:10px">📱 Leer con el NFC del teléfono</button>':''}</form>
+ <div id="lres"></div>`;
+ const inp=$('#aret');const foco=()=>setTimeout(()=>inp&&inp.focus(),50);
+ const leer=c=>{const n=normA(c);if(!n)return;const ahora=Date.now();if(LEER.ult.c===n&&ahora-LEER.ult.t<2500)return;LEER.ult={c:n,t:ahora};
+  if(navigator.vibrate)navigator.vibrate(60);inv?agregarInv(c):mostrarBusqueda(c);inp.value='';foco()};
+ $('#flee').onsubmit=e=>{e.preventDefault();leer(inp.value)};
+ if($('#bnfc'))$('#bnfc').onclick=()=>iniciarNfc(leer);
+ if(inv){$('#ilote').onchange=e=>{LEER.lote=e.target.value;LEER.leidos=[];pintarInv()};pintarInv()}
+ foco()};
+
+function mostrarBusqueda(c){const a=buscarArete(c);
+ if(a){toast('Encontrado: '+nombreA(a));go('#/animal/'+a.id);return}
+ const sin=animalesF().filter(x=>!x.chip).sort((x,y)=>x.codigo.localeCompare(y.codigo,'es',{numeric:true}));
+ $('#lres').innerHTML=`<div class="card"><b>El arete ${esc(c)} no está registrado</b><p class="sub">Podés crear el animal con ese arete o asignárselo a uno que ya tengás.</p>
+ ${puede('registrar')?`<div class="acts"><a class="btn" href="#/animalform//${encodeURIComponent(c)}">➕ Nuevo animal con este arete</a></div>
+ ${sin.length?`<label>Asignar a un animal sin chip</label><div class="row"><select id="asig" class="sp">${selOpts(sin.map(x=>[x.id,nombreA(x)]),'')}</select><button class="btn sec" id="basig">Asignar</button></div>`:''}`:''}</div>`;
+ if($('#basig'))$('#basig').onclick=async()=>{const a=animal($('#asig').value);a.chip=c;await put('animales',a);toast('Arete asignado a '+nombreA(a));go('#/animal/'+a.id)}}
+
+function agregarInv(c){const n=normA(c);if(LEER.leidos.some(x=>x.n===n))return toast('Ese arete ya se leyó');const a=buscarArete(c);LEER.leidos.push({n,c,a:a?a.id:null});pintarInv(a?nombreA(a):'Arete desconocido')}
+function pintarInv(msg){const esp=animalesF().filter(a=>!LEER.lote||a.loteId===LEER.lote);const ids=new Set(LEER.leidos.map(x=>x.a).filter(Boolean));
+ const ok=esp.filter(a=>ids.has(a.id)),falta=esp.filter(a=>!ids.has(a.id)),otros=LEER.leidos.filter(x=>x.a&&!esp.some(a=>a.id===x.a)).map(x=>animal(x.a)),desc=LEER.leidos.filter(x=>!x.a);
+ const li=(xs,f)=>xs.length?xs.map(f).join(''):'<div class="sub">—</div>';
+ $('#lres').innerHTML=`${msg?`<div class="al ${msg==='Arete desconocido'?'b':'i'}"><div class="t">${esc(msg)}</div></div>`:''}
+ <div class="grid"><div class="stat"><div class="v">${ok.length} / ${esp.length}</div><div class="l">Presentes</div></div><div class="stat"><div class="v ${falta.length?'neg':''}">${falta.length}</div><div class="l">Faltan</div></div><div class="stat"><div class="v">${otros.length}</div><div class="l">De otro lote</div></div><div class="stat"><div class="v">${desc.length}</div><div class="l">Desconocidos</div></div></div>
+ <div class="card"><b>Faltan (${falta.length})</b><div class="list">${li(falta,a=>`<a class="it" href="#/animal/${a.id}"><div class="sp">${esc(nombreA(a))}<div class="sub">${a.chip?'Arete '+esc(a.chip):'Sin arete registrado'}</div></div></a>`)}</div></div>
+ ${otros.length?`<div class="card"><b>De otro lote (${otros.length})</b><div class="list">${li(otros,a=>`<div class="it"><div class="sp">${esc(nombreA(a))}<div class="sub">Está en: ${esc(loteN(a.loteId))}</div></div></div>`)}</div>${LEER.lote&&puede('registrar')?`<button class="btn sec sm" id="mover">🔀 Pasarlos a ${esc(loteN(LEER.lote))}</button>`:''}</div>`:''}
+ ${desc.length?`<div class="card"><b>Aretes desconocidos (${desc.length})</b><div class="list">${li(desc,x=>`<div class="it"><div class="sp">${esc(x.c)}</div>${puede('registrar')?`<a class="btn sm sec" href="#/animalform//${encodeURIComponent(x.c)}">➕ Crear</a>`:''}</div>`)}</div></div>`:''}
+ <div class="card"><b>Presentes (${ok.length})</b><div class="list">${li(ok,a=>`<div class="it"><div class="sp">✅ ${esc(nombreA(a))}</div></div>`)}</div></div>
+ ${LEER.leidos.length?'<button class="btn sec sm" id="reini">Empezar de nuevo</button>':''}`;
+ if($('#mover'))$('#mover').onclick=async()=>{for(const a of otros)await registrar(a,'lote',hoy(),{destino:LEER.lote},'Inventario con lector');toast(otros.length===1?'1 animal movido':otros.length+' animales movidos');pintarInv()};
+ if($('#reini'))$('#reini').onclick=()=>{LEER.leidos=[];pintarInv()}}
+
+/* ================= Trabajadores (solo propietario, necesita internet) ================= */
+V.equipo=async()=>{const f=F();$('#app').innerHTML=`<h2>👥 Trabajadores</h2><p class="sub">${esc(f.nombre)}</p><div class="card" id="eq"><div class="empty">Cargando…</div></div>
+ <form class="card" id="feq"><b>Agregar trabajador</b><div class="f2"><div><label>Correo de su cuenta</label><input name="email" type="email" required placeholder="trabajador@correo.com"></div>
+ <div><label>Rol</label><select name="rol">${selOpts(Object.entries(ROLES).filter(([k])=>k!=='propietario').map(([k,v])=>[k,v]),'peon')}</select></div></div>
+ <div class="row" style="margin-top:12px"><button class="btn">Agregar</button></div></form>
+ <div class="card"><b>¿Cómo se crea la cuenta del trabajador?</b><ol class="sub" style="padding-left:18px;margin:8px 0 0">
+ <li>En Supabase: <b>Authentication → Users → Add user → Create new user</b>.</li><li>Escribí su correo y una contraseña, y marcá <b>Auto Confirm User</b>.</li>
+ <li>Aquí lo agregás con ese correo y su rol.</li><li>El trabajador abre <b>${esc(location.host||'la app')}</b> en su teléfono y entra con ese correo y contraseña.</li></ol></div>
+ <div class="card"><b>Qué puede hacer cada rol</b><dl class="kv" style="margin-top:8px">${Object.entries(ROL_TXT).map(([k,v])=>`<dt>${ROLES[k]}</dt><dd class="sub">${v}</dd>`).join('')}</dl></div>`;
+ const sb=N.userId&&navigator.onLine?await Sync.cliente():null;
+ if(!sb){$('#eq').innerHTML='<div class="empty">Necesitás internet y haber iniciado sesión en la nube.</div>';return}
+ const carga=async()=>{const {data,error}=await sb.from('miembros').select('user_id,email,rol').eq('finca_id',f.id).order('email');
+  if(error){$('#eq').innerHTML=`<p class="tag w">${/schema cache|does not exist|PGRST205|42P01/i.test(error.message)?'Falta ejecutar el script 04-trabajadores.sql en Supabase.':esc(error.message)}</p>`;return}
+  $('#eq').innerHTML=`<b>Equipo de la finca</b><div class="list"><div class="it"><div class="av">👑</div><div class="sp"><b>${esc(N.email)}</b><div class="sub">Propietario (vos)</div></div></div>${data.map(m=>`<div class="it"><div class="av">👤</div><div class="sp"><b>${esc(m.email||m.user_id)}</b><select data-rol="${m.user_id}" style="margin-top:4px">${selOpts(Object.entries(ROLES).filter(([k])=>k!=='propietario'),m.rol)}</select></div><button class="btn sm bad" data-quitar="${m.user_id}" title="Quitar">✕</button></div>`).join('')}</div>${data.length?'':'<p class="sub">Todavía no hay trabajadores.</p>'}`;
+  document.querySelectorAll('[data-rol]').forEach(s=>s.onchange=async()=>{const {error}=await sb.from('miembros').update({rol:s.value}).eq('finca_id',f.id).eq('user_id',s.dataset.rol);toast(error?'Error: '+error.message:'Rol actualizado')});
+  document.querySelectorAll('[data-quitar]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Quitar a este trabajador de la finca? Ya no podrá ver ni registrar nada.'))return;const {error}=await sb.from('miembros').delete().eq('finca_id',f.id).eq('user_id',b.dataset.quitar);toast(error?'Error: '+error.message:'Trabajador quitado');carga()})};
+ $('#feq').onsubmit=async e=>{e.preventDefault();const d=formData(e.target);const {error}=await sb.rpc('mg_agregar_miembro',{p_finca:f.id,p_email:d.email,p_rol:d.rol});
+  if(error)return toast(/function|schema cache|PGRST202/i.test(error.message)&&!/propietario|cuenta/i.test(error.message)?'Falta ejecutar el script 04-trabajadores.sql en Supabase':error.message);toast('Trabajador agregado');e.target.reset();carga()};
+ carga()};
+
 function route(){const h=location.hash.replace(/^#\/?/,'')||'inicio';const [r,...p]=h.split('/');
  setFincas();Sync.pinta();
  if(Sync.necesitaLogin&&r!=='nube'){return V.login()}
  if(r==='nube'){setNav('mas');$('#ttl').textContent='Nube';return V.nube()}
  if(!F()&&r!=='finca'){return V.bienvenida()}
- const fn=V[r]||V.inicio;setNav({animal:'animales',animalform:'animales',evento:'animales',mov:'finanzas',archivo:'animales',tarea:'agenda'}[r]||r);$('#ttl').textContent=F()?F().nombre:'Mi Ganado';fn(...p.map(decodeURIComponent));window.scrollTo(0,0)}
+ const bloq={finanzas:'finanzas',mov:'finanzas',masivo:'registrar',evento:'registrar',animalform:'registrar',tarea:'registrar',param:'finca',equipo:'equipo'}[r]||(r==='finca'&&p[0]!=='nueva'?'finca':null);
+ if(bloq&&F()&&!puede(bloq)){toast('Tu rol no permite entrar ahí');location.hash='#/inicio';return}
+ const fn=V[r]||V.inicio;setNav({animal:'animales',animalform:'animales',evento:'animales',mov:'finanzas',archivo:'animales',tarea:'agenda',leer:'animales',equipo:'mas'}[r]||r);$('#ttl').textContent=F()?F().nombre:'Mi Ganado';fn(...p.map(decodeURIComponent));window.scrollTo(0,0)}
 window.onhashchange=route;
 const go=h=>location.hash=h;
 function selOpts(arr,val,vacia){return(vacia?`<option value="">${vacia}</option>`:'')+arr.map(o=>{const [v,l]=Array.isArray(o)?o:[o,o];return`<option value="${esc(v)}" ${String(v)===String(val??'')?'selected':''}>${esc(l)}</option>`}).join('')}
@@ -451,15 +534,15 @@ V.inicio=()=>{const an=animalesF(),t=hoy();const H=an.filter(a=>a.sexo==='H'),M=
  ${agendaCard()}
  <div class="card"><div class="row"><b>Producción de leche · 14 días</b><span class="sp"></span><a class="btn sm sec" href="#/masivo/leche">Registrar</a></div>
   <div class="bars" style="margin-bottom:20px">${dia.map(d=>`<div title="${fmtF(d.f)}: ${num(d.v)} L" style="height:${d.v/mx*100}%"><span>${D(d.f).getDate()}</span></div>`).join('')}</div></div>
- ${finResumenCard()}
+ ${puede('finanzas')?finResumenCard():''}
  <div class="card"><b>Animales por etapa</b><div style="margin-top:8px">${Object.keys(porEt).length?ETAPAS.filter(k=>porEt[k]).map(k=>`<span class="tag g">${k}: ${porEt[k]}</span>`).join(''):'<span class="muted">Aún no hay animales.</span>'}</div></div>
  <div class="card"><div class="row"><b>Alertas principales</b><span class="sp"></span><a href="#/alertas" class="btn sm sec">Ver todas</a></div><div style="margin-top:10px">${al.length?al.slice(0,5).map(alHtml).join(''):'<div class="muted">Sin alertas pendientes. 👌</div>'}</div></div>
- <div class="acts"><a class="btn" href="#/animalform">➕ Nuevo animal</a><a class="btn sec" href="#/masivo/leche">🥛 Leche</a><a class="btn sec" href="#/masivo/peso">⚖️ Pesaje</a><a class="btn sec" href="#/informes">📊 Informes</a></div>`};
+ <div class="acts">${puede('registrar')?'<a class="btn" href="#/animalform">➕ Nuevo animal</a><a class="btn sec" href="#/masivo/leche">🥛 Leche</a><a class="btn sec" href="#/masivo/peso">⚖️ Pesaje</a>':''}<a class="btn sec" href="#/leer">📡 Leer arete</a><a class="btn sec" href="#/informes">📊 Informes</a></div>`};
 const alHtml=x=>`<a class="al ${x.cls}" href="#/animal/${x.a.id}"><div><div class="t">${esc(x.t)} · ${esc(nombreA(x.a))}</div><div class="sub">${esc(x.d)}</div></div></a>`;
 
 let filtro={q:'',sexo:'',lote:'',etapa:'',estado:'activo'};
 V.animales=()=>{const ls=lotesF();
- $('#app').innerHTML=`<div class="row"><h2 class="sp">Animales</h2><a class="btn" href="#/animalform">➕ Nuevo</a></div>
+ $('#app').innerHTML=`<div class="row"><h2 class="sp">Animales</h2><a class="btn sec" href="#/leer">📡 Leer arete</a>${puede('registrar')?'<a class="btn" href="#/animalform">➕ Nuevo</a>':''}</div>
  <div class="card"><input id="q" placeholder="Buscar por código, nombre, chip…" value="${esc(filtro.q)}">
  <div class="f2"><div><label>Sexo</label><select id="fs">${selOpts([['','Todos'],['H','Hembras'],['M','Machos']],filtro.sexo)}</select></div>
  <div><label>Lote / potrero</label><select id="fl">${selOpts([['','Todos'],...ls.map(l=>[l.id,l.nombre])],filtro.lote)}</select></div>
@@ -473,7 +556,7 @@ V.animales=()=>{const ls=lotesF();
  $('#q').oninput=e=>{filtro.q=e.target.value;pinta()};
  [['#fs','sexo'],['#fl','lote'],['#fe','etapa'],['#fx','estado']].forEach(([s,k])=>$(s).onchange=e=>{filtro[k]=e.target.value;pinta();hidratar(true)});pinta();hidratar(true)};
 
-V.animalform=(id)=>{const a=id?animal(id):{especie:F().especie||'bovino',sexo:'H',estado:'activo',proposito:F().proposito};const ls=lotesF();
+V.animalform=(id,chipIni)=>{const a=id?animal(id):{especie:F().especie||'bovino',sexo:'H',estado:'activo',proposito:F().proposito,chip:chipIni||''};const ls=lotesF();
  const madres=animalesF(true).filter(x=>x.sexo==='H'&&x.id!==a.id),padres=animalesF(true).filter(x=>x.sexo==='M'&&x.id!==a.id);
  $('#app').innerHTML=`<h2>${id?'Editar animal':'Nuevo animal'}</h2><form class="card" id="fa">
  <div class="f2"><div><label>Código / número *</label><input name="codigo" required value="${esc(a.codigo)}"></div><div><label>Nombre</label><input name="nombre" value="${esc(a.nombre)}"></div>
@@ -489,7 +572,7 @@ V.animalform=(id)=>{const a=id?animal(id):{especie:F().especie||'bovino',sexo:'H
  <div><label>Dieta</label><select name="dieta">${selOpts(DIETAS,a.dieta,'—')}</select></div>
  <div><label>Origen</label><select name="origen">${selOpts(['Nacido en la finca','Comprado'],a.origen,'—')}</select></div>
  <div><label>Fecha de ingreso / compra</label><input type="date" name="fechaIngreso" value="${esc(a.fechaIngreso)}"></div>
- ${id?'':`<div><label>Precio de compra (opcional)</label><input type="number" step="any" min="0" name="precioCompra" placeholder="Se anota como gasto"></div><div><label>Vendedor (opcional)</label><input name="vendedor"></div>`}</div>
+ ${id||!puede('finanzas')?'':`<div><label>Precio de compra (opcional)</label><input type="number" step="any" min="0" name="precioCompra" placeholder="Se anota como gasto"></div><div><label>Vendedor (opcional)</label><input name="vendedor"></div>`}</div>
  <h3>Identificación</h3><div class="f2"><div><label>Chip RFID</label><input name="chip" value="${esc(a.chip)}"></div><div><label>Tag NFC</label><input name="nfc" value="${esc(a.nfc)}"></div><div><label>Código QR / barras</label><input name="qr" value="${esc(a.qr)}"></div><div><label>Marca / hierro / arete</label><input name="marca" value="${esc(a.marca)}"></div></div>
  ${id?'':`<h3>Datos iniciales (opcional)</h3><div class="f2"><div><label>Peso actual (kg)</label><input type="number" step="any" name="pesoIni"></div><div><label>Estado reproductivo</label><select name="reproIni">${selOpts([['','—'],['prenada','Preñada'],['lactando','En ordeño']],'')}</select></div><div><label>Fecha del último parto</label><input type="date" name="partoIni"></div><div><label>Fecha del último servicio</label><input type="date" name="servIni"></div></div>`}
  <label>Notas</label><textarea name="notas" rows="2">${esc(a.notas)}</textarea>
@@ -518,16 +601,16 @@ V.animal=(id,tab='general')=>{const a=animal(id);if(!a)return go('#/animales');c
  if(tab==='sanidad')body=`<div class="card">${s.length?s.map(x=>`<span class="tag ${x.k==='mast'?'b':'w'}">${esc(x.txt)}</span>`).join(''):'<span class="tag">Sin tratamientos activos</span>'}</div>`+histHtml(ev.filter(e=>['vacuna','desparasitacion','tratamiento','mastitis'].includes(e.tipo)));
  if(tab==='historial')body=histHtml(ev);
  if(tab==='archivos')body=archivosHtml(a);
- if(tab==='finanzas'){const ms=S.movimientos.filter(m=>m.animalId===id).sort((x,y)=>y.fecha.localeCompare(x.fecha));const ing=ms.filter(m=>m.tipo==='ingreso').reduce((t,m)=>t+m.monto,0),gas=ms.filter(m=>m.tipo==='gasto').reduce((t,m)=>t+m.monto,0);body=`<div class="grid"><div class="stat"><div class="v pos">${fmtM(ing)}</div><div class="l">Ingresos</div></div><div class="stat"><div class="v neg">${fmtM(gas)}</div><div class="l">Gastos directos</div></div><div class="stat"><div class="v ${ing-gas>=0?'pos':'neg'}">${fmtM(ing-gas)}</div><div class="l">Balance</div></div></div><div class="card list">${ms.map(movHtml).join('')||'<div class="empty">Sin gastos ni ingresos asignados a este animal.</div>'}</div><a class="btn sec sm" href="#/mov/nuevo/gasto/${id}">➖ Agregar gasto de este animal</a>`}
- const acc=Object.entries(TIPOS).filter(([k,t])=>(!t.sexo||t.sexo===a.sexo)&&a.estado==='activo');
- $('#app').innerHTML=`<div class="card"><div class="row"><a class="avl" href="#/animal/${id}/archivos" title="Fotos">${avHtml(a,60)}<i>📷</i></a><div class="sp"><h2 style="margin:0">${esc(a.codigo)} ${esc(a.nombre||'')}</h2><div class="sub">${et.n} · ${edadTxt(a.fechaNac)} · ${esc(a.raza||'')}</div></div><a class="btn sm sec" href="#/animalform/${id}">Editar</a></div>
+ if(tab==='finanzas'&&puede('finanzas')){const ms=S.movimientos.filter(m=>m.animalId===id).sort((x,y)=>y.fecha.localeCompare(x.fecha));const ing=ms.filter(m=>m.tipo==='ingreso').reduce((t,m)=>t+m.monto,0),gas=ms.filter(m=>m.tipo==='gasto').reduce((t,m)=>t+m.monto,0);body=`<div class="grid"><div class="stat"><div class="v pos">${fmtM(ing)}</div><div class="l">Ingresos</div></div><div class="stat"><div class="v neg">${fmtM(gas)}</div><div class="l">Gastos directos</div></div><div class="stat"><div class="v ${ing-gas>=0?'pos':'neg'}">${fmtM(ing-gas)}</div><div class="l">Balance</div></div></div><div class="card list">${ms.map(movHtml).join('')||'<div class="empty">Sin gastos ni ingresos asignados a este animal.</div>'}</div><a class="btn sec sm" href="#/mov/nuevo/gasto/${id}">➖ Agregar gasto de este animal</a>`}
+ const acc=puede('registrar')?Object.entries(TIPOS).filter(([k,t])=>(!t.sexo||t.sexo===a.sexo)&&a.estado==='activo'&&(k!=='venta'||puede('vender'))):[];
+ $('#app').innerHTML=`<div class="card"><div class="row"><a class="avl" href="#/animal/${id}/archivos" title="Fotos">${avHtml(a,60)}<i>📷</i></a><div class="sp"><h2 style="margin:0">${esc(a.codigo)} ${esc(a.nombre||'')}</h2><div class="sub">${et.n} · ${edadTxt(a.fechaNac)} · ${esc(a.raza||'')}</div></div>${puede('registrar')?`<a class="btn sm sec" href="#/animalform/${id}">Editar</a>`:''}</div>
  <div style="margin-top:8px">${a.estado!=='activo'?`<span class="tag b">${a.estado==='vendido'?'Vendido':'Muerto'}</span>`:''}${a.sexo==='H'&&r.estado?`<span class="tag ${r.estado==='Preñada'?'':'g'}">${r.estado}</span>`:''}${r.lactando?'<span class="tag i">En ordeño</span>':''}${s.map(x=>`<span class="tag ${x.k==='mast'?'b':'w'}">${esc(x.txt)}</span>`).join('')}</div></div>
  ${(()=>{const px=agendaItems(hoy(),addDias(hoy(),60),false).filter(x=>(x.a&&x.a.id===id)&&!x.virtual).slice(0,4);return px.length?`<div class="card list" style="margin-top:10px"><b>📅 Próximo en la agenda</b>${px.map(agItem).join('')}</div>`:''})()}
  ${acc.length?`<h3>Registrar</h3><div class="acts">${acc.map(([k,t])=>`<a class="btn sec sm" href="#/evento/${id}/${k}">${t.ic} ${t.n}</a>`).join('')}<a class="btn sm" href="#/tarea/nueva/${id}">📅 Programar tarea</a></div>`:''}
- <div class="tabs">${T('general','General')}${T('repro','Reproducción')}${T('prod','Producción')}${T('sanidad','Sanidad')}${T('archivos','📷 Fotos y docs')}${T('finanzas','💰 Finanzas')}${T('historial','Historial')}</div>${body}
- <div class="row" style="margin-top:16px">${a.estado!=='activo'?`<button class="btn sm sec" id="react">Reactivar animal</button>`:''}<span class="sp"></span><button class="btn sm bad" id="borrar">Eliminar animal</button></div>`;
+ <div class="tabs">${T('general','General')}${T('repro','Reproducción')}${T('prod','Producción')}${T('sanidad','Sanidad')}${T('archivos','📷 Fotos y docs')}${puede('finanzas')?T('finanzas','💰 Finanzas'):''}${T('historial','Historial')}</div>${body}
+ ${puede('borrar')?`<div class="row" style="margin-top:16px">${a.estado!=='activo'?`<button class="btn sm sec" id="react">Reactivar animal</button>`:''}<span class="sp"></span><button class="btn sm bad" id="borrar">Eliminar animal</button></div>`:''}`;
  hidratar();if(tab==='archivos')archivosEventos(a);
- $('#borrar').onclick=async()=>{if(!confirm('¿Eliminar este animal y todos sus registros? No se puede deshacer.'))return;for(const e of evDe(id)){await borrarMovEvento(e.id);await del('eventos',e.id)}for(const x of S.archivos.filter(x=>x.animalId===id)){await del('archivos',x.id);await borrarBlob(x.id)}await del('animales',id);toast('Animal eliminado');go('#/animales')};
+ if($('#borrar'))$('#borrar').onclick=async()=>{if(!confirm('¿Eliminar este animal y todos sus registros? No se puede deshacer.'))return;for(const e of evDe(id)){await borrarMovEvento(e.id);await del('eventos',e.id)}for(const x of S.archivos.filter(x=>x.animalId===id)){await del('archivos',x.id);await borrarBlob(x.id)}await del('animales',id);toast('Animal eliminado');go('#/animales')};
  if($('#react'))$('#react').onclick=async()=>{a.estado='activo';await put('animales',a);route()};
  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Eliminar este registro?'))return;const e=S.eventos.find(x=>x.id===b.dataset.del);await borrarMovEvento(e.id);await del('eventos',e.id);if((e.tipo==='venta'||e.tipo==='muerte')&&a.estado!=='activo'){a.estado='activo';await put('animales',a)}route()})};
 function intervaloPartos(a){const p=evDe(a.id).filter(e=>e.tipo==='parto');if(p.length<2)return'—';let s=0;for(let i=1;i<p.length;i++)s+=dias(p[i-1].fecha,p[i].fecha);return Math.round(s/(p.length-1))+' días'}
@@ -537,15 +620,15 @@ function evTxt(e){const d=e.datos||{},t=TIPOS[e.tipo];const p=[];
  else if(e.tipo==='lote')p.push('→ '+loteN(d.destino));
  else for(const [k,l,ty] of t.c){if(d[k]!=null&&d[k]!=='')p.push((ty==='date'?l+': '+fmtF(d[k]):ty==='number'?l.replace(/ \(.*/,'')+': '+num(d[k]):d[k]))}
  return p.join(' · ')}
-function histHtml(ev){return`<div class="card">${ev.length?ev.slice().reverse().map(e=>`<div class="ev"><div class="d">${fmtF(e.fecha)}</div><div class="sp"><b>${TIPOS[e.tipo]?.ic||''} ${TIPOS[e.tipo]?.n||e.tipo}</b><div class="sub">${esc(evTxt(e))}${e.notas?' — '+esc(e.notas):''}</div></div><button class="btn sm sec" data-del="${e.id}" title="Eliminar">✕</button></div>`).join(''):'<div class="empty">Sin registros todavía.</div>'}</div>`}
+function histHtml(ev){return`<div class="card">${ev.length?ev.slice().reverse().map(e=>`<div class="ev"><div class="d">${fmtF(e.fecha)}</div><div class="sp"><b>${TIPOS[e.tipo]?.ic||''} ${TIPOS[e.tipo]?.n||e.tipo}</b><div class="sub">${esc(evTxt(e))}${e.notas?' — '+esc(e.notas):''}</div></div>${puede('borrar')?`<button class="btn sm sec" data-del="${e.id}" title="Eliminar">✕</button>`:''}</div>`).join(''):'<div class="empty">Sin registros todavía.</div>'}</div>`}
 
 function campoHtml([k,l,ty,op],val){if(ty==='select')return`<div><label>${l}</label><select name="${k}">${selOpts(op,val)}</select></div>`;
  if(ty==='lote')return`<div><label>${l}</label><select name="${k}" required>${selOpts(lotesF().map(x=>[x.id,x.nombre]),val,'Elegir…')}</select></div>`;
  return`<div><label>${l}</label><input name="${k}" type="${ty}" ${ty==='number'?'step="any" min="0"':''} value="${esc(val)}"></div>`}
 V.evento=(id,tipo)=>{const a=animal(id),t=TIPOS[tipo];if(!a||!t)return go('#/animales');
- $('#app').innerHTML=`<h2>${t.ic} ${t.n}</h2><p class="sub">${esc(nombreA(a))}</p><form class="card" id="fe"><div class="f2"><div><label>Fecha</label><input type="date" name="fecha" value="${hoy()}" max="${hoy()}" required></div>${t.c.map(c=>campoHtml(c,'')).join('')}</div><label>Notas</label><textarea name="notas" rows="2"></textarea><div class="row" style="margin-top:14px"><button class="btn">Guardar</button><a class="btn sec" href="#/animal/${id}">Cancelar</a></div></form>`;
+ $('#app').innerHTML=`<h2>${t.ic} ${t.n}</h2><p class="sub">${esc(nombreA(a))}</p><form class="card" id="fe"><div class="f2"><div><label>Fecha</label><input type="date" name="fecha" value="${hoy()}" max="${hoy()}" required></div>${t.c.filter(c=>c[0]!=='costo'||puede('finanzas')).map(c=>campoHtml(c,'')).join('')}</div><label>Notas</label><textarea name="notas" rows="2"></textarea><div class="row" style="margin-top:14px"><button class="btn">Guardar</button><a class="btn sec" href="#/animal/${id}">Cancelar</a></div></form>`;
  if(tipo==='lote'&&!lotesF().length)$('#fe').insertAdjacentHTML('afterbegin','<p class="tag w">Primero crea lotes en Más → Finca.</p>');
- $('#fe').onsubmit=async ev=>{ev.preventDefault();const {fecha,notas,...datos}=formData(ev.target);for(const [k,,ty] of t.c)if(ty==='number'&&datos[k]!=='')datos[k]=Number(datos[k]);
+ $('#fe').onsubmit=async ev=>{ev.preventDefault();const {fecha,notas,...datos}=formData(ev.target);for(const [k,,ty] of t.c)if(ty==='number'&&datos[k]!==''&&datos[k]!=null)datos[k]=Number(datos[k]);
   if(tipo==='peso'&&!(datos.valor>0))return toast('Ingresa el peso');if(tipo==='leche'&&!(litros({datos})>0))return toast('Ingresa los litros');
   await registrar(a,tipo,fecha,datos,notas);toast('Registro guardado');go('#/animal/'+id)}};
 async function borrarMovEvento(eid){for(const m of S.movimientos.filter(m=>m.eventoId===eid))await del('movimientos',m.id)}
@@ -572,7 +655,7 @@ V.masivo=(tipo,loteP)=>{if(!tipo){$('#app').innerHTML=`<h2>Registro masivo</h2><
   $('#mok').onclick=async()=>{const f=$('#mf').value,m={};document.querySelectorAll('#mlst input').forEach(i=>{if(i.value!==''){(m[i.dataset.a]=m[i.dataset.a]||{})[i.dataset.k]=Number(i.value)}});
    const ids=Object.keys(m);if(!ids.length)return toast('No hay datos para guardar');for(const id of ids)await registrar(animal(id),tipo,f,m[id],'');toast(ids.length+' registros guardados');go('#/inicio')};return}
  const cs=t.c.filter(c=>c[0]!=='costo');const conCosto=cs.length!==t.c.length;
- $('#app').innerHTML=base+`<form class="card" id="mfm"><div class="f2">${cs.map(c=>campoHtml(c,'')).join('')}${conCosto?'<div><label>Costo total (opcional)</label><input type="number" step="any" min="0" name="costoTotal" placeholder="Se anota como un gasto"></div>':''}</div><label>Notas</label><input name="notas"></form><div class="card"><div class="row"><b>Animales</b><span class="sp"></span><button class="btn sm sec" id="mall">Marcar todos</button></div><div id="mlst"></div></div><button class="btn" id="mok">Guardar</button>`;
+ $('#app').innerHTML=base+`<form class="card" id="mfm"><div class="f2">${cs.map(c=>campoHtml(c,'')).join('')}${conCosto&&puede('finanzas')?'<div><label>Costo total (opcional)</label><input type="number" step="any" min="0" name="costoTotal" placeholder="Se anota como un gasto"></div>':''}</div><label>Notas</label><input name="notas"></form><div class="card"><div class="row"><b>Animales</b><span class="sp"></span><button class="btn sm sec" id="mall">Marcar todos</button></div><div id="mlst"></div></div><button class="btn" id="mok">Guardar</button>`;
  const pinta=()=>{const an=animalesF().filter(a=>!lote||a.loteId===lote).sort((x,y)=>x.codigo.localeCompare(y.codigo,'es',{numeric:true}));$('#mlst').innerHTML=an.map(a=>`<label class="chk"><input type="checkbox" value="${a.id}"><span>${esc(nombreA(a))} <span class="sub">· ${etapa(a).n} · ${esc(loteN(a.loteId))}</span></span></label>`).join('')||'<div class="empty">No hay animales.</div>'};
  $('#ml').onchange=e=>{lote=e.target.value;pinta()};pinta();
  $('#mall').onclick=()=>{const cb=[...document.querySelectorAll('#mlst input')];const v=!cb.every(c=>c.checked);cb.forEach(c=>c.checked=v)};
@@ -595,21 +678,24 @@ const INF={
  movs:{n:'Movimientos (ingresos y gastos)',f:()=>[['Fecha','Tipo','Categoría','Descripción','Cantidad','Unidad','Precio unitario','Monto','Proveedor / cliente','Lote','Animal'],movF().sort((x,y)=>y.fecha.localeCompare(x.fecha)).map(x=>[x.fecha,x.tipo==='ingreso'?'Ingreso':'Gasto',x.categoria,x.descripcion||'',x.cantidad===''?'':x.cantidad,x.unidad||'',x.precioUnit===''?'':x.precioUnit,x.tipo==='gasto'?-x.monto:x.monto,x.tercero||'',x.loteId?loteN(x.loteId):'',x.animalId?nombreA(animal(x.animalId)):''])]},
  bajas:{n:'Ventas y muertes',f:()=>{const ids=new Set(animalesF(true).map(a=>a.id));return[['Fecha','Animal','Tipo','Detalle'],S.eventos.filter(e=>ids.has(e.animalId)&&(e.tipo==='venta'||e.tipo==='muerte')).sort((x,y)=>y.fecha.localeCompare(x.fecha)).map(e=>[e.fecha,nombreA(animal(e.animalId)),TIPOS[e.tipo].n,evTxt(e)])]}}
 };
-V.informes=(k)=>{if(!k||!INF[k]){$('#app').innerHTML=`<h2>Informes</h2><div class="card list">${Object.entries(INF).map(([k,v])=>`<a class="it" href="#/informes/${k}"><div class="av">📊</div><div class="sp"><b>${v.n}</b></div></a>`).join('')}</div>`;return}
+V.informes=(k)=>{if(!k||!INF[k]||(['finmes','movs'].includes(k)&&!puede('finanzas'))){$('#app').innerHTML=`<h2>Informes</h2><div class="card list">${Object.entries(INF).filter(([k])=>puede('finanzas')||!['finmes','movs'].includes(k)).map(([k,v])=>`<a class="it" href="#/informes/${k}"><div class="av">📊</div><div class="sp"><b>${v.n}</b></div></a>`).join('')}</div>`;return}
  const [c,rows]=INF[k].f();$('#app').innerHTML=`<div class="row"><h2 class="sp">${INF[k].n}</h2><button class="btn sm" id="csv">⬇️ Excel (CSV)</button></div><div class="card tw">${rows.length?`<table><thead><tr>${c.map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(x=>`<td>${esc(typeof x==='number'?num(x,2):x)}</td>`).join('')}</tr>`).join('')}</tbody></table>`:'<div class="empty">Sin datos.</div>'}</div><p class="sub">${rows.length} filas · ${esc(F().nombre)} · ${fmtF(hoy())}</p><a class="btn sec sm" href="#/informes">← Informes</a>`;
  $('#csv').onclick=()=>{const q=v=>{v=v==null?'':String(v);return/[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};const txt='sep=;\n'+[c,...rows].map(r=>r.map(x=>typeof x==='number'?String(x).replace('.',','):q(x)).join(';')).join('\n');descargar('\ufeff'+txt,`${k}-${hoy()}.csv`,'text/csv')}};
 function descargar(txt,nombre,tipo){const b=new Blob([txt],{type:tipo});const u=URL.createObjectURL(b);const l=document.createElement('a');l.href=u;l.download=nombre;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
 
 /* ---------- Más: finca, lotes, parámetros, respaldo ---------- */
 V.mas=()=>{$('#app').innerHTML=`<h2>Más</h2><div class="card list">
- <a class="it" href="#/finca"><div class="av">🏡</div><div class="sp"><b>Finca, lotes y potreros</b><div class="sub">${esc(F().nombre)}</div></div></a>
+ ${N.userId?`<div class="it"><div class="av">🪪</div><div class="sp"><b>Tu rol: ${ROLES[rol()]}</b><div class="sub">${esc(F().nombre)}</div></div></div>`:''}
+ ${puede('finca')?`<a class="it" href="#/finca"><div class="av">🏡</div><div class="sp"><b>Finca, lotes y potreros</b><div class="sub">${esc(F().nombre)}</div></div></a>`:''}
+ ${puede('equipo')?`<a class="it" href="#/equipo"><div class="av">👥</div><div class="sp"><b>Trabajadores</b><div class="sub">Dar acceso a administradores, veterinario, peones o visitantes</div></div></a>`:''}
+ <a class="it" href="#/leer"><div class="av">📡</div><div class="sp"><b>Leer arete</b><div class="sub">Buscar animales e inventario rápido con lector o NFC</div></div></a>
  <a class="it" href="#/informes"><div class="av">📊</div><div class="sp"><b>Informes</b><div class="sub">Inventario, leche, pesos, sanidad… exportables a Excel</div></div></a>
- <a class="it" href="#/finanzas"><div class="av">💰</div><div class="sp"><b>Finanzas</b><div class="sub">Gastos, ingresos, venta de leche, ganancia</div></div></a>
- <a class="it" href="#/param"><div class="av">🎛️</div><div class="sp"><b>Parámetros</b><div class="sub">Alertas y moneda</div></div></a>
+ ${puede('finanzas')?`<a class="it" href="#/finanzas"><div class="av">💰</div><div class="sp"><b>Finanzas</b><div class="sub">Gastos, ingresos, venta de leche, ganancia</div></div></a>`:''}
+ ${puede('finca')?`<a class="it" href="#/param"><div class="av">🎛️</div><div class="sp"><b>Parámetros</b><div class="sub">Alertas y moneda</div></div></a>`:''}
  <a class="it" href="#/nube"><div class="av">☁️</div><div class="sp"><b>Nube y cuenta</b><div class="sub">${N.userId?'Conectado como '+esc(N.email):'Guardar los datos en Supabase'}</div></div></a>
  <a class="it" href="#/respaldo"><div class="av">💾</div><div class="sp"><b>Respaldo de datos</b><div class="sub">Guardar o restaurar una copia</div></div></a>
  <a class="it" href="#/finca/nueva"><div class="av">➕</div><div class="sp"><b>Agregar otra finca</b></div></a></div>
- <p class="sub">Mi Ganado v4 · ${N.userId?'Datos guardados en este dispositivo y en la nube.':'Los datos se guardan solo en este dispositivo y navegador.'}</p>`};
+ <p class="sub">Mi Ganado v5 · ${N.userId?'Datos guardados en este dispositivo y en la nube.':'Los datos se guardan solo en este dispositivo y navegador.'}</p>`};
 V.login=()=>{setNav('');$('#ttl').textContent='Mi Ganado';$('#nav').innerHTML='';
  $('#app').innerHTML=`<div class="card"><h2>Iniciar sesión</h2><p class="sub">Tus datos se guardan de forma segura en la nube y solo tú puedes verlos.</p>
  <form id="fli"><label>Correo electrónico</label><input type="email" name="email" required autocomplete="email" value="${esc(N.email)}"><label>Contraseña</label><input type="password" name="pass" required minlength="6" autocomplete="current-password">
@@ -647,7 +733,7 @@ V.finca=(modo)=>{const nueva=modo==='nueva';const f=nueva?{especie:'bovino',prop
 V.param=()=>{const c=S.config;const P=[['secado','Días de lactancia para sugerir secado'],['secarAntesParto','Secar cuando falten (días al parto)'],['esperaVol','Espera voluntaria tras el parto (días)'],['alertaParto','Avisar parto con (días de anticipación)'],['diasChequeo','Chequeo de preñez a los (días del servicio)'],['celoDesde','Revisar celo desde (días del servicio)'],['celoHasta','Revisar celo hasta (días del servicio)']];
  $('#app').innerHTML=`<h2>Parámetros de alertas</h2><form class="card" id="fp"><div class="f2">${P.map(([k,l])=>`<div><label>${l}</label><input type="number" min="0" name="${k}" value="${c[k]}"></div>`).join('')}</div><div class="f2"><div><label>Moneda</label><select name="moneda">${selOpts([['₡','₡ Colones'],['$','$ Dólares']],c.moneda)}</select></div></div><p class="sub">Gestación usada: ${Object.values(ESPECIES).map(e=>e.n+' '+e.gest+' d').join(' · ')}</p><button class="btn">Guardar</button></form>`;
  $('#fp').onsubmit=async ev=>{ev.preventDefault();const d=formData(ev.target);for(const k in d)c[k]=k==='moneda'?d[k]:Number(d[k]);await saveCfg();toast('Parámetros guardados');go('#/mas')}};
-V.respaldo=()=>{$('#app').innerHTML=`<h2>Respaldo de datos</h2><div class="card"><p>Los datos viven solo en este navegador. Si se borra el historial del navegador o cambias de teléfono, se pierden. <b>Descarga un respaldo cada semana</b> y guárdalo en Drive o en tu computadora.</p><p class="sub">El respaldo incluye todos los registros y finanzas; las fotos y documentos quedan guardados en la nube.</p><button class="btn" id="exp">⬇️ Descargar respaldo</button></div><div class="card"><b>Restaurar respaldo</b><p class="sub">Reemplaza todos los datos actuales por los del archivo.</p><input type="file" accept=".json" id="imp"></div>`;
+V.respaldo=()=>{$('#app').innerHTML=`<h2>Respaldo de datos</h2><div class="card"><p>Los datos viven solo en este navegador. Si se borra el historial del navegador o cambias de teléfono, se pierden. <b>Descarga un respaldo cada semana</b> y guárdalo en Drive o en tu computadora.</p><p class="sub">El respaldo incluye todos los registros y finanzas; las fotos y documentos quedan guardados en la nube.</p><button class="btn" id="exp">⬇️ Descargar respaldo</button></div><div class="card" ${rol()==='propietario'?'':'hidden'}><b>Restaurar respaldo</b><p class="sub">Reemplaza todos los datos actuales por los del archivo.</p><input type="file" accept=".json" id="imp"></div>`;
  $('#exp').onclick=()=>{descargar(JSON.stringify({app:'mi-ganado',v:1,fecha:new Date().toISOString(),datos:{fincas:S.fincas,lotes:S.lotes,animales:S.animales,eventos:S.eventos,archivos:S.archivos,movimientos:S.movimientos,tareas:S.tareas,config:S.config}},null,1),`respaldo-mi-ganado-${hoy()}.json`,'application/json');S.config.ultimoRespaldo=hoy();saveCfg()};$('#imp').onchange=importar};
 async function importar(ev){const file=ev.target.files[0];if(!file)return;try{const j=JSON.parse(await file.text());if(j.app!=='mi-ganado')throw 0;if(S.fincas.length&&!confirm('Esto reemplazará todos los datos actuales. ¿Continuar?'))return;
  for(const s of STORES)await tx(s,'readwrite',o=>o.clear());await saveN();for(const s of DATA)for(const r of j.datos[s]||[]){r._s=0;r.mod=r.mod||Date.now();await tx(s,'readwrite',o=>o.put(r))}S.config=Object.assign({},CFG0,j.datos.config||{});delete S.config.id;await saveCfg();await loadAll();toast('Respaldo restaurado');go('#/inicio');route()}catch(e){toast('Archivo de respaldo no válido')}}
@@ -682,10 +768,10 @@ async function subirArchivos(sb){if(!N.userId)return;const pend=(await tx('blobs
   if(error)throw new Error('archivo: '+error.message);b.subido=true;await tx('blobs','readwrite',o=>o.put(b));
   if(ar.ruta!==ruta){ar.ruta=ruta;ar.mod=Date.now();ar._s=0;await putRaw('archivos',ar)}}}
 function archivosHtml(a){const mios=S.archivos.filter(x=>x.animalId===a.id).sort((x,y)=>(y.fecha||'').localeCompare(x.fecha||''));const fotos=mios.filter(x=>x.tipo==='foto'),docs=mios.filter(x=>x.tipo!=='foto');
- return`<div class="card"><div class="acts"><label class="btn sm upl">📷 Tomar foto<input type="file" accept="image/*" capture="environment" data-up="foto"></label><label class="btn sec sm upl">🖼️ De la galería<input type="file" accept="image/*" multiple data-up="foto"></label><label class="btn sec sm upl">📄 Documento<input type="file" accept="image/*,application/pdf" data-up="doc"></label></div><div id="docform"></div>
+ return`<div class="card"><div class="acts" ${puede('registrar')?'':'hidden'}><label class="btn sm upl">📷 Tomar foto<input type="file" accept="image/*" capture="environment" data-up="foto"></label><label class="btn sec sm upl">🖼️ De la galería<input type="file" accept="image/*" multiple data-up="foto"></label><label class="btn sec sm upl">📄 Documento<input type="file" accept="image/*,application/pdf" data-up="doc"></label></div><div id="docform"></div>
  ${N.userId?'':'<p class="sub">Sin sesión en la nube: las fotos quedan solo en este dispositivo.</p>'}</div>
  <div class="card"><b>Fotos (${fotos.length})</b>${fotos.length?`<div class="fotos" style="margin-top:8px">${fotos.map(f=>`<button class="ph" data-ph="${f.id}" data-ver="${f.id}" title="${esc(fmtF(f.fecha))}">${f.portada?'<b>⭐</b>':''}</button>`).join('')}</div>`:'<div class="empty">Aún no hay fotos. La primera será la foto de perfil.</div>'}</div>
- <div class="card"><b>Documentos (${docs.length})</b><div class="list">${docs.map(d=>`<div class="it"><div class="av">${d.mime==='application/pdf'?'📄':'🖼️'}</div><div class="sp"><b>${esc(d.nombre)}</b><div class="sub">${esc(archTipoN(d.tipo))} · ${fmtF(d.fecha)} · ${tamTxt(d.tamano)}${d.notas?' · '+esc(d.notas):''}</div></div><button class="btn sm sec" data-abrir="${d.id}">Abrir</button><button class="btn sm sec" data-delar="${d.id}" title="Eliminar">✕</button></div>`).join('')||'<div class="empty">Sin documentos. Sube certificados de vacunación, registro, guías…</div>'}</div></div>`}
+ <div class="card"><b>Documentos (${docs.length})</b><div class="list">${docs.map(d=>`<div class="it"><div class="av">${d.mime==='application/pdf'?'📄':'🖼️'}</div><div class="sp"><b>${esc(d.nombre)}</b><div class="sub">${esc(archTipoN(d.tipo))} · ${fmtF(d.fecha)} · ${tamTxt(d.tamano)}${d.notas?' · '+esc(d.notas):''}</div></div><button class="btn sm sec" data-abrir="${d.id}">Abrir</button>${puede('borrar')?`<button class="btn sm sec" data-delar="${d.id}" title="Eliminar">✕</button>`:''}</div>`).join('')||'<div class="empty">Sin documentos. Sube certificados de vacunación, registro, guías…</div>'}</div></div>`}
 function archivosEventos(a){
  document.querySelectorAll('[data-up]').forEach(inp=>inp.onchange=async()=>{const files=[...inp.files];inp.value='';if(!files.length)return;
   if(inp.dataset.up==='foto'){let n=0;for(const f of files)if(await guardarArchivo(a,f,{tipo:'foto',nombre:f.name}))n++;if(n)toast(n===1?'Foto guardada':n+' fotos guardadas');route();return}
@@ -697,11 +783,11 @@ function archivosEventos(a){
  document.querySelectorAll('[data-abrir]').forEach(b=>b.onclick=()=>abrirDoc(S.archivos.find(x=>x.id===b.dataset.abrir)));
  document.querySelectorAll('[data-delar]').forEach(b=>b.onclick=async()=>{if(!confirm('¿Eliminar este documento?'))return;await del('archivos',b.dataset.delar);await borrarBlob(b.dataset.delar);route()})}
 async function verFoto(ar){if(!ar)return;const u=await urlArchivo(ar);if(!u)return toast('Sin conexión: esta foto no está guardada en el teléfono');
- const ov=document.createElement('div');ov.className='ov';ov.innerHTML=`<img src="${u}" alt=""><div class="row">${ar.tipo==='foto'&&!ar.portada?'<button class="btn sec sm" data-x="p">⭐ Foto de perfil</button>':''}<button class="btn sec sm" data-x="d">⬇️ Guardar</button><button class="btn bad sm" data-x="b">🗑️ Eliminar</button><button class="btn sm" data-x="c">✕ Cerrar</button></div>`;
+ const ov=document.createElement('div');ov.className='ov';ov.innerHTML=`<img src="${u}" alt=""><div class="row">${ar.tipo==='foto'&&!ar.portada?'<button class="btn sec sm" data-x="p">⭐ Foto de perfil</button>':''}<button class="btn sec sm" data-x="d">⬇️ Guardar</button>${puede('borrar')?'<button class="btn bad sm" data-x="b">🗑️ Eliminar</button>':''}<button class="btn sm" data-x="c">✕ Cerrar</button></div>`;
  document.body.appendChild(ov);const cerrar=()=>ov.remove();
  ov.querySelector('[data-x=c]').onclick=cerrar;
  ov.querySelector('[data-x=d]').onclick=()=>{const l=document.createElement('a');l.href=u;l.download=(ar.nombre||'foto').replace(/\.[^.]+$/,'')+'.'+extDe(ar.mime);document.body.appendChild(l);l.click();l.remove()};
- ov.querySelector('[data-x=b]').onclick=async()=>{if(!confirm('¿Eliminar esta foto?'))return;await del('archivos',ar.id);await borrarBlob(ar.id);cerrar();route()};
+ if(ov.querySelector('[data-x=b]'))ov.querySelector('[data-x=b]').onclick=async()=>{if(!confirm('¿Eliminar esta foto?'))return;await del('archivos',ar.id);await borrarBlob(ar.id);cerrar();route()};
  const p=ov.querySelector('[data-x=p]');if(p)p.onclick=async()=>{for(const x of S.archivos.filter(x=>x.animalId===ar.animalId&&x.portada&&x.id!==ar.id)){x.portada=false;await put('archivos',x)}ar.portada=true;await put('archivos',ar);cerrar();toast('Foto de perfil actualizada');route()}}
 async function abrirDoc(ar){if(!ar)return;if(ar.mime.startsWith('image/'))return verFoto(ar);const u=await urlArchivo(ar);if(!u)return toast('Sin conexión: este documento no está guardado en el teléfono');
  const l=document.createElement('a');l.href=u;l.target='_blank';l.download=(ar.nombre||'documento')+'.'+extDe(ar.mime);document.body.appendChild(l);l.click();l.remove()}

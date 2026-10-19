@@ -19,6 +19,7 @@ alertas, fotos y documentos, y finanzas. Funciona sin internet y sincroniza con 
 - **v2** – Nube con Supabase, inicio de sesión, sincronización sin conexión, instalable (PWA).
 - **v3** – Fotos y documentos por animal (Supabase Storage) y módulo de finanzas.
 - **v4** – Agenda: calendario con tareas automáticas (partos, secados, chequeos, celos, destetes, vacunas) y tareas propias que se repiten. Requiere `supabase/03-agenda.sql`.
+- **v5** – Lectura de aretes (lector Bluetooth en modo teclado o NFC) con inventario rápido por lote, y trabajadores con roles (propietario, administrador, veterinario, peón, visitante). Requiere `supabase/04-trabajadores.sql`.
 
 ## Publicar una versión nueva
 
