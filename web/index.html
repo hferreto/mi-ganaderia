@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2f6b3a">
 <title>Mi Ganado</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 :root{--bg:#f4f1ea;--card:#fff;--ink:#1f2a1f;--muted:#6b7366;--line:#e2ddd2;--pri:#2f6b3a;--pri2:#e5efe4;--warn:#b7791f;--warn2:#fdf3e1;--bad:#b23a2e;--bad2:#fbe9e6;--info:#2b6cb0;--info2:#e6f0fa;--r:12px}
 @media (prefers-color-scheme:dark){:root{--bg:#141a14;--card:#1d241d;--ink:#e8ede6;--muted:#9aa595;--line:#2e382e;--pri:#6fbf7d;--pri2:#24362a;--warn:#e0a84a;--warn2:#3a2f1c;--bad:#ef7b6f;--bad2:#3d2420;--info:#79aee8;--info2:#1f2d3d}}
@@ -14,6 +18,7 @@ header{position:sticky;top:0;z-index:5;background:var(--pri);color:#fff;padding:
 header h1{font-size:17px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 header select{max-width:45%;background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:8px;padding:6px}
 header select option{color:#000}
+#nubeBtn{background:rgba(255,255,255,.15);color:#fff;border:0;border-radius:8px;padding:6px 9px;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
 main{max-width:900px;margin:0 auto;padding:14px 16px 96px}
 nav{position:fixed;bottom:0;left:0;right:0;z-index:5;background:var(--card);border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
 nav a{flex:1;text-align:center;color:var(--muted);text-decoration:none;font-size:11px;padding:4px 0}
@@ -75,7 +80,7 @@ th{color:var(--muted);font-weight:600;font-size:12px}
 </style>
 </head>
 <body>
-<header><h1 id="ttl">Mi Ganado</h1><select id="fsel" aria-label="Finca"></select></header>
+<header><h1 id="ttl">Mi Ganado</h1><select id="fsel" aria-label="Finca"></select><button id="nubeBtn" title="Sincronización" style="display:none"></button></header>
 <main id="app"></main>
 <nav id="nav"></nav>
 <script>
@@ -132,15 +137,79 @@ const TIPOS={
 };
 
 /* ================= Base de datos (IndexedDB) ================= */
-const STORES=['fincas','lotes','animales','eventos','config'];
+const STORES=['fincas','lotes','animales','eventos','config','tombs'];
+const DATA=['fincas','lotes','animales','eventos'];
 let db, S={fincas:[],lotes:[],animales:[],eventos:[],config:{}};
 const CFG0={fincaActual:null,secado:305,esperaVol:60,alertaParto:15,diasChequeo:45,celoDesde:18,celoHasta:24,secarAntesParto:60};
-function openDB(){return new Promise((ok,ko)=>{const r=indexedDB.open('mi-ganado',1);r.onupgradeneeded=()=>{STORES.forEach(s=>{if(!r.result.objectStoreNames.contains(s))r.result.createObjectStore(s,{keyPath:'id'})})};r.onsuccess=()=>ok(r.result);r.onerror=()=>ko(r.error)})}
+/* N = configuración de la nube (solo de este dispositivo, no se sincroniza) */
+const NUBE_URL='https://ioljiwrrypodbiqeamzi.supabase.co', NUBE_KEY='sb_publishable__szpsGCEHdHGlhHuUadErw_IBU0-Rrq';
+let N={id:'nube',url:NUBE_URL,key:NUBE_KEY,userId:null,email:'',pull:{},cfgDirty:false,ultimaSync:null};
+function openDB(){return new Promise((ok,ko)=>{const r=indexedDB.open('mi-ganado',2);r.onupgradeneeded=()=>{STORES.forEach(s=>{if(!r.result.objectStoreNames.contains(s))r.result.createObjectStore(s,{keyPath:'id'})})};r.onsuccess=()=>ok(r.result);r.onerror=()=>ko(r.error)})}
 function tx(store,mode,fn){return new Promise((ok,ko)=>{const t=db.transaction(store,mode);const o=t.objectStore(store);const res=fn(o);t.oncomplete=()=>ok(res&&res.result);t.onerror=()=>ko(t.error)})}
-async function loadAll(){for(const s of STORES){const rows=await tx(s,'readonly',o=>o.getAll());if(s==='config'){const c=rows.find(r=>r.id==='cfg');S.config=Object.assign({},CFG0,c||{})}else S[s]=rows||[]}}
-async function put(store,obj){obj.mod=Date.now();await tx(store,'readwrite',o=>o.put(obj));const arr=S[store];const i=arr.findIndex(x=>x.id===obj.id);if(i>=0)arr[i]=obj;else arr.push(obj)}
-async function del(store,id){await tx(store,'readwrite',o=>o.delete(id));S[store]=S[store].filter(x=>x.id!==id)}
-async function saveCfg(){await tx('config','readwrite',o=>o.put(Object.assign({id:'cfg'},S.config)))}
+async function loadAll(){for(const s of STORES){if(s==='tombs')continue;const rows=await tx(s,'readonly',o=>o.getAll());if(s==='config'){const c=rows.find(r=>r.id==='cfg');S.config=Object.assign({},CFG0,c||{});delete S.config.id;const n=rows.find(r=>r.id==='nube');if(n)N=Object.assign(N,n)}else S[s]=rows||[]}}
+/* put: guarda y marca el registro como pendiente de subir (_s=0) */
+async function put(store,obj){obj.mod=Date.now();obj._s=0;await putRaw(store,obj);Sync.pronto()}
+async function putRaw(store,obj){await tx(store,'readwrite',o=>o.put(obj));const arr=S[store];const i=arr.findIndex(x=>x.id===obj.id);if(i>=0)arr[i]=obj;else arr.push(obj)}
+async function del(store,id){await delRaw(store,id);if(N.userId)await tx('tombs','readwrite',o=>o.put({id:store+':'+id,store,rid:id}));Sync.pronto()}
+async function delRaw(store,id){await tx(store,'readwrite',o=>o.delete(id));S[store]=S[store].filter(x=>x.id!==id)}
+async function saveCfg(){await tx('config','readwrite',o=>o.put(Object.assign({},S.config,{id:'cfg'})));N.cfgDirty=true;N.cfgMod=Date.now();await saveN();Sync.pronto()}
+async function saveN(){await tx('config','readwrite',o=>o.put(Object.assign({},N,{id:'nube'})))}
+async function borrarLocal(){for(const s of STORES)await tx(s,'readwrite',o=>o.clear());S={fincas:[],lotes:[],animales:[],eventos:[],config:Object.assign({},CFG0)}}
+
+/* ================= Sincronización con Supabase ================= */
+const SB_LIB='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js';
+const MAP={
+ fincas:[['nombre'],['proposito'],['especie'],['ubicacion'],['areaTotal','area_total','n'],['areaGanado','area_ganado','n']],
+ lotes:[['fincaId','finca_id'],['nombre'],['tipo'],['area','area','n']],
+ animales:[['fincaId','finca_id'],['codigo'],['nombre'],['especie'],['sexo'],['fechaNac','fecha_nac','d'],['raza'],['proposito'],['loteId','lote_id'],['madreId','madre_id'],['padreId','padre_id'],['padreTxt','padre_txt'],['dieta'],['origen'],['fechaIngreso','fecha_ingreso','d'],['chip'],['nfc'],['qr'],['marca'],['notas'],['estado'],['fechaSalida','fecha_salida','d']],
+ eventos:[['animalId','animal_id'],['fincaId','finca_id'],['tipo'],['fecha','fecha','d'],['datos','datos','j'],['notas']]
+};
+function toRow(s,o){const r={id:o.id,mod:o.mod||Date.now(),borrado:false};for(const [k,c=k,t] of MAP[s]){let v=o[k];if(v===''||v==null)v=t==='j'?{}:null;else if(t==='n')v=isNaN(Number(v))?null:Number(v);r[c]=v}return r}
+function fromRow(s,r){const o={id:r.id,mod:Number(r.mod)||0,_s:1};for(const [k,c=k,t] of MAP[s]){const v=r[c];o[k]=v==null?(t==='j'?{}:''):t==='n'?Number(v):v}return o}
+const Sync={sb:null,estado:'local',corriendo:false,timer:null,error:'',
+ activa(){return !!(N.url&&N.key)},
+ cargarLib(){if(window.supabase)return Promise.resolve(true);const una=src=>new Promise(ok=>{const s=document.createElement('script');s.src=src;s.onload=()=>ok(!!window.supabase);s.onerror=()=>{s.remove();ok(false)};document.head.appendChild(s)});
+  return (location.protocol.startsWith('http')?una('supabase.js'):Promise.resolve(false)).then(r=>r||una(SB_LIB))},
+ async cliente(){if(this.sb)return this.sb;if(!this.activa())return null;if(!await this.cargarLib())return null;try{this.sb=window.supabase.createClient(N.url,N.key,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'mi-ganado-auth'}})}catch(e){this.error='URL o clave no válidas';return null}return this.sb},
+ async sesion(){const sb=await this.cliente();if(!sb)return null;const {data}=await sb.auth.getSession();return data.session},
+ pendientes(){return DATA.reduce((n,s)=>n+S[s].filter(o=>o._s!==1).length,0)+(N.cfgDirty?1:0)},
+ pronto(){if(!N.userId)return;this.pinta();clearTimeout(this.timer);this.timer=setTimeout(()=>this.ahora(),4000)},
+ pinta(){const b=$('#nubeBtn');if(!this.activa()){b.style.display='none';return}b.style.display='';const p=this.pendientes();
+  b.textContent=this.corriendo?'⟳ …':!navigator.onLine||this.estado==='off'?'☁️ sin señal'+(p?' · '+p:''):this.estado==='error'?'⚠️ error':p?'☁️ '+p+' pend.':'☁️ ✓';b.title=this.error||'Sincronizar ahora'},
+ async ahora(manual){if(this.corriendo||!N.userId)return;if(!navigator.onLine){this.estado='off';this.pinta();if(manual)toast('Sin conexión: se sincronizará al volver la señal');return}
+  this.corriendo=true;this.pinta();let cambios=false;
+  try{const sb=await this.cliente();if(!sb)throw new Error(this.error||'No se pudo cargar Supabase');const ses=await this.sesion();if(!ses)throw new Error('Sesión vencida: vuelve a iniciar sesión');
+   /* 1. Subir cambios locales */
+   for(const s of DATA){const pend=S[s].filter(o=>o._s!==1);for(let i=0;i<pend.length;i+=400){const lote=pend.slice(i,i+400);const filas=lote.map(o=>toRow(s,o));const {error}=await sb.from(s).upsert(filas,{onConflict:'id'});if(error)throw new Error(s+': '+error.message);for(const f of filas){const act=S[s].find(x=>x.id===f.id);if(act&&act.mod===f.mod){act._s=1;await tx(s,'readwrite',x=>x.put(act))}}}}
+   const tombs=await tx('tombs','readonly',o=>o.getAll());for(const s of DATA){const ids=tombs.filter(t=>t.store===s).map(t=>t.rid);for(let i=0;i<ids.length;i+=200){const {error}=await sb.from(s).update({borrado:true,mod:Date.now()}).in('id',ids.slice(i,i+200));if(error)throw new Error(s+': '+error.message)}}
+   for(const t of tombs)await tx('tombs','readwrite',o=>o.delete(t.id));
+   if(N.cfgDirty){const {id,...datos}=S.config;const {error}=await sb.from('config').upsert({user_id:N.userId,datos,mod:N.cfgMod||Date.now()},{onConflict:'user_id'});if(error)throw new Error('config: '+error.message);N.cfgDirty=false;N.cfgModRemoto=N.cfgMod||Date.now()}
+   /* 2. Bajar cambios de la nube */
+   for(const s of DATA){const desde=N.pull[s]||'1970-01-01T00:00:00Z';let off=0,max=desde;for(;;){const {data,error}=await sb.from(s).select('*').gt('updated_at',desde).order('updated_at').order('id').range(off,off+999);if(error)throw new Error(s+': '+error.message);
+     for(const r of data){if(r.updated_at>max)max=r.updated_at;const loc=S[s].find(x=>x.id===r.id);
+      if(r.borrado){if(loc){await delRaw(s,r.id);cambios=true}continue}
+      if(loc&&loc._s!==1&&(loc.mod||0)>(Number(r.mod)||0))continue;
+      await putRaw(s,fromRow(s,r));cambios=true}
+     if(data.length<1000)break;off+=1000}N.pull[s]=max}
+   if(!N.cfgDirty){const {data}=await sb.from('config').select('datos,mod').eq('user_id',N.userId).maybeSingle();if(data&&(Number(data.mod)||0)>(N.cfgModRemoto||0)){const fa=S.config.fincaActual;S.config=Object.assign({},CFG0,data.datos||{});if(fa&&S.fincas.some(f=>f.id===fa))S.config.fincaActual=fa;N.cfgModRemoto=Number(data.mod);await tx('config','readwrite',o=>o.put(Object.assign({},S.config,{id:'cfg'})));cambios=true}}
+   if(!S.fincas.some(f=>f.id===S.config.fincaActual)&&S.fincas[0]){S.config.fincaActual=S.fincas[0].id;cambios=true}
+   N.ultimaSync=new Date().toISOString();await saveN();this.estado='ok';this.error=''}
+  catch(e){this.estado=navigator.onLine?'error':'off';this.error=String(e.message||e);if(manual)toast('Error al sincronizar: '+this.error)}
+  finally{this.corriendo=false;this.pinta()}
+  if(cambios){const r=(location.hash.replace(/^#\/?/,'')||'inicio').split('/')[0];if(!['animalform','evento','finca','param','masivo','nube','login'].includes(r))route();else setNav(r)}
+  if(manual&&this.estado==='ok')toast('Datos sincronizados ✓')},
+ async entrar(email,pass,registro){const sb=await this.cliente();if(!sb)throw new Error(this.error||'Sin conexión: no se pudo cargar Supabase');
+  const {data,error}=registro?await sb.auth.signUp({email,password:pass}):await sb.auth.signInWithPassword({email,password:pass});if(error)throw error;
+  if(!data.session)return'confirmar';const uidN=data.session.user.id;
+  if(N.userId&&N.userId!==uidN)await borrarLocal();          // datos de otro usuario en este dispositivo
+  for(const s of DATA)for(const o of S[s])if(o._s!==1){o._s=0}  // datos locales previos: subirlos
+  N.userId=uidN;N.email=data.session.user.email;N.pull={};N.cfgDirty=S.fincas.length>0;N.cfgModRemoto=0;await saveN();
+  await this.ahora(true);return'ok'},
+ async salir(){const sb=await this.cliente();if(sb)await sb.auth.signOut().catch(()=>{});await borrarLocal();N.userId=null;N.email='';N.pull={};N.cfgDirty=false;N.ultimaSync=null;await saveN()}
+};
+$('#nubeBtn').onclick=()=>N.userId?Sync.ahora(true):go('#/nube');
+window.addEventListener('online',()=>Sync.ahora());window.addEventListener('offline',()=>Sync.pinta());
+setInterval(()=>{if(N.userId&&document.visibilityState==='visible')Sync.ahora()},90000);
 
 /* ================= Consultas y cálculos ================= */
 const F=()=>S.fincas.find(f=>f.id===S.config.fincaActual);
@@ -201,7 +270,9 @@ function setFincas(){const s=$('#fsel');s.innerHTML=S.fincas.map(f=>`<option val
 $('#fsel').onchange=async e=>{S.config.fincaActual=e.target.value;await saveCfg();route()};
 const V={};
 function route(){const h=location.hash.replace(/^#\/?/,'')||'inicio';const [r,...p]=h.split('/');
- setFincas();
+ setFincas();Sync.pinta();
+ if(Sync.necesitaLogin&&r!=='nube'){return V.login()}
+ if(r==='nube'){setNav('mas');$('#ttl').textContent='Nube';return V.nube()}
  if(!F()&&r!=='finca'){return V.bienvenida()}
  const fn=V[r]||V.inicio;setNav({animal:'animales',animalform:'animales',evento:'animales'}[r]||r);$('#ttl').textContent=F()?F().nombre:'Mi Ganado';fn(...p.map(decodeURIComponent));window.scrollTo(0,0)}
 window.onhashchange=route;
@@ -210,7 +281,7 @@ function selOpts(arr,val,vacia){return(vacia?`<option value="">${vacia}</option>
 function formData(f){const o={};new FormData(f).forEach((v,k)=>o[k]=typeof v==='string'?v.trim():v);return o}
 
 /* ================= Vistas ================= */
-V.bienvenida=()=>{setNav('');$('#ttl').textContent='Mi Ganado';$('#app').innerHTML=`<div class="card"><h2>¡Bienvenido! 🐄</h2><p>Para comenzar, crea tu finca. Toda la información se guarda en este dispositivo y funciona sin internet.</p><a class="btn" href="#/finca/nueva">Crear mi finca</a></div><div class="card"><p class="muted" style="margin:0">¿Tienes un respaldo? Puedes restaurarlo:</p><label>Archivo de respaldo (.json)</label><input type="file" accept=".json" id="imp"></div>`;$('#imp').onchange=importar};
+V.bienvenida=()=>{setNav('');$('#ttl').textContent='Mi Ganado';$('#app').innerHTML=`<div class="card"><h2>¡Bienvenido! 🐄</h2><p>Para comenzar, crea tu finca. Toda la información se guarda en este dispositivo y funciona sin internet.</p><a class="btn" href="#/finca/nueva">Crear mi finca</a></div><div class="card"><p class="muted" style="margin:0">¿Tienes un respaldo? Puedes restaurarlo:</p><label>Archivo de respaldo (.json)</label><input type="file" accept=".json" id="imp"></div><div class="card"><b>☁️ Guardar en la nube</b><p class="sub">Conecta tu proyecto de Supabase para respaldar y sincronizar tus datos.</p><a class="btn sec" href="#/nube">Conectar con Supabase</a></div>`;$('#imp').onchange=importar};
 
 V.inicio=()=>{const an=animalesF(),t=hoy();const H=an.filter(a=>a.sexo==='H'),M=an.filter(a=>a.sexo==='M');
  const reps=H.map(a=>repro(a));const ord=reps.filter(r=>r.lactando).length,pre=reps.filter(r=>r.estado==='Preñada').length;
@@ -368,9 +439,34 @@ V.mas=()=>{$('#app').innerHTML=`<h2>Más</h2><div class="card list">
  <a class="it" href="#/finca"><div class="av">🏡</div><div class="sp"><b>Finca, lotes y potreros</b><div class="sub">${esc(F().nombre)}</div></div></a>
  <a class="it" href="#/informes"><div class="av">📊</div><div class="sp"><b>Informes</b><div class="sub">Inventario, leche, pesos, sanidad… exportables a Excel</div></div></a>
  <a class="it" href="#/param"><div class="av">🎛️</div><div class="sp"><b>Parámetros de alertas</b><div class="sub">Días de secado, espera voluntaria, chequeos</div></div></a>
+ <a class="it" href="#/nube"><div class="av">☁️</div><div class="sp"><b>Nube y cuenta</b><div class="sub">${N.userId?'Conectado como '+esc(N.email):'Guardar los datos en Supabase'}</div></div></a>
  <a class="it" href="#/respaldo"><div class="av">💾</div><div class="sp"><b>Respaldo de datos</b><div class="sub">Guardar o restaurar una copia</div></div></a>
  <a class="it" href="#/finca/nueva"><div class="av">➕</div><div class="sp"><b>Agregar otra finca</b></div></a></div>
- <p class="sub">Mi Ganado v1 · Los datos se guardan solo en este dispositivo y navegador.</p>`};
+ <p class="sub">Mi Ganado v2 · ${N.userId?'Datos guardados en este dispositivo y en la nube.':'Los datos se guardan solo en este dispositivo y navegador.'}</p>`};
+V.login=()=>{setNav('');$('#ttl').textContent='Mi Ganado';$('#nav').innerHTML='';
+ $('#app').innerHTML=`<div class="card"><h2>Iniciar sesión</h2><p class="sub">Tus datos se guardan de forma segura en la nube y solo tú puedes verlos.</p>
+ <form id="fli"><label>Correo electrónico</label><input type="email" name="email" required autocomplete="email" value="${esc(N.email)}"><label>Contraseña</label><input type="password" name="pass" required minlength="6" autocomplete="current-password">
+ <div class="row" style="margin-top:14px"><button class="btn" name="b" value="entrar">Entrar</button><button class="btn sec" name="b" value="registro">Crear cuenta</button></div></form>
+ <p class="sub" id="lmsg"></p></div><p class="sub"><a href="#/nube">Configuración de la nube</a></p>`;
+ $('#fli').onsubmit=async ev=>{ev.preventDefault();const reg=ev.submitter&&ev.submitter.value==='registro';const d=formData(ev.target);$('#lmsg').textContent='Conectando…';
+  try{const r=await Sync.entrar(d.email,d.pass,reg);if(r==='confirmar'){$('#lmsg').textContent='Te enviamos un correo de confirmación. Ábrelo y luego vuelve aquí a entrar.';return}
+   Sync.necesitaLogin=false;toast('Sesión iniciada');go('#/inicio');route()}
+  catch(e){const m=String(e.message||e);$('#lmsg').textContent=/Invalid login/i.test(m)?'Correo o contraseña incorrectos.':/not confirmed/i.test(m)?'Falta confirmar el correo: revisa tu bandeja de entrada.':/already registered/i.test(m)?'Ese correo ya tiene cuenta: usa Entrar.':'Error: '+m}}};
+V.nube=()=>{const p=Sync.pendientes();
+ $('#app').innerHTML=`<h2>☁️ Nube (Supabase)</h2>
+ ${N.userId?`<div class="card"><dl class="kv"><dt>Cuenta</dt><dd>${esc(N.email)}</dd><dt>Última sincronización</dt><dd>${N.ultimaSync?new Date(N.ultimaSync).toLocaleString('es-CR'):'—'}</dd><dt>Pendientes de subir</dt><dd>${p}</dd><dt>Estado</dt><dd>${Sync.error?'⚠️ '+esc(Sync.error):navigator.onLine?'Conectado':'Sin señal'}</dd></dl>
+  <div class="row" style="margin-top:14px"><button class="btn" id="syn">⟳ Sincronizar ahora</button><button class="btn sec" id="out">Cerrar sesión</button></div></div>`:''}
+ <form class="card" id="fn"><b>Conexión del proyecto</b><p class="sub">Copia estos dos datos de Supabase → Project Settings → API.</p>
+ <label>Project URL</label><input name="url" placeholder="https://xxxx.supabase.co" value="${esc(N.url)}" ${N.userId?'readonly':''}>
+ <label>Clave pública (publishable / anon key)</label><input name="key" placeholder="sb_publishable_… o eyJ…" value="${esc(N.key)}" ${N.userId?'readonly':''}>
+ ${N.userId?'<p class="sub">Para cambiar de proyecto, primero cierra sesión.</p>':`<div class="row" style="margin-top:14px"><button class="btn">Guardar y conectar</button>${N.url?'<button type="button" class="btn sec" id="desc">Quitar nube</button>':''}</div>`}</form>`;
+ if($('#syn'))$('#syn').onclick=async()=>{await Sync.ahora(true);V.nube()};
+ if($('#out'))$('#out').onclick=async()=>{if(!navigator.onLine&&Sync.pendientes()&&!confirm('No hay señal y hay '+Sync.pendientes()+' cambios sin subir. Si cierras sesión se perderán. ¿Continuar?'))return;
+  if(navigator.onLine)await Sync.ahora();if(Sync.pendientes()&&!confirm('Quedaron cambios sin subir. ¿Cerrar sesión de todos modos?'))return;
+  if(!confirm('Se borrarán los datos de este dispositivo (siguen guardados en la nube). ¿Cerrar sesión?'))return;await Sync.salir();Sync.necesitaLogin=true;location.hash='#/inicio';route()};
+ if($('#desc'))$('#desc').onclick=async()=>{N.url='';N.key='';Sync.sb=null;Sync.necesitaLogin=false;await saveN();toast('Nube desactivada');go('#/inicio')};
+ $('#fn').onsubmit=async ev=>{ev.preventDefault();if(N.userId)return;const d=formData(ev.target);if(!/^https:\/\/.+/.test(d.url)||d.key.length<20)return toast('Revisa la URL y la clave');
+  N.url=d.url.replace(/\/+$/,'');N.key=d.key;Sync.sb=null;await saveN();if(!await Sync.cliente())return toast(Sync.error||'Sin conexión: intenta de nuevo con internet');Sync.necesitaLogin=true;go('#/login');route()}};
 V.finca=(modo)=>{const nueva=modo==='nueva';const f=nueva?{especie:'bovino',proposito:'Doble propósito'}:F();
  $('#app').innerHTML=`<h2>${nueva?'Nueva finca':'Finca'}</h2><form class="card" id="ff"><div class="f2"><div><label>Nombre de la finca *</label><input name="nombre" required minlength="3" value="${esc(f.nombre)}"></div><div><label>Propósito</label><select name="proposito">${selOpts(['Leche','Carne','Doble propósito','Cría','Levante'],f.proposito)}</select></div><div><label>Especie principal</label><select name="especie">${selOpts(Object.entries(ESPECIES).map(([k,v])=>[k,v.n]),f.especie)}</select></div><div><label>Ubicación</label><input name="ubicacion" value="${esc(f.ubicacion)}" placeholder="Provincia, cantón, distrito"></div><div><label>Área total (ha)</label><input type="number" step="any" min="0" name="areaTotal" value="${esc(f.areaTotal)}"></div><div><label>Área de ganadería (ha)</label><input type="number" step="any" min="0" name="areaGanado" value="${esc(f.areaGanado)}"></div></div><div class="row" style="margin-top:14px"><button class="btn">Guardar finca</button>${S.fincas.length?`<a class="btn sec" href="#/mas">Cancelar</a>`:''}</div></form>
  ${nueva?'':`<div class="card"><div class="row"><b>Lotes y potreros</b></div><div class="list" id="ll">${lotesF().map(l=>`<div class="it"><div class="av">${l.tipo==='Potrero'?'🌿':'🐄'}</div><div class="sp"><b>${esc(l.nombre)}</b><div class="sub">${l.tipo} · ${animalesF().filter(a=>a.loteId===l.id).length} animales${l.area?' · '+num(l.area)+' ha':''}</div></div><button class="btn sm sec" data-dl="${l.id}">✕</button></div>`).join('')||'<div class="empty">Aún no hay lotes.</div>'}</div>
@@ -387,10 +483,13 @@ V.param=()=>{const c=S.config;const P=[['secado','Días de lactancia para sugeri
 V.respaldo=()=>{$('#app').innerHTML=`<h2>Respaldo de datos</h2><div class="card"><p>Los datos viven solo en este navegador. Si se borra el historial del navegador o cambias de teléfono, se pierden. <b>Descarga un respaldo cada semana</b> y guárdalo en Drive o en tu computadora.</p><button class="btn" id="exp">⬇️ Descargar respaldo</button></div><div class="card"><b>Restaurar respaldo</b><p class="sub">Reemplaza todos los datos actuales por los del archivo.</p><input type="file" accept=".json" id="imp"></div>`;
  $('#exp').onclick=()=>{descargar(JSON.stringify({app:'mi-ganado',v:1,fecha:new Date().toISOString(),datos:{fincas:S.fincas,lotes:S.lotes,animales:S.animales,eventos:S.eventos,config:S.config}},null,1),`respaldo-mi-ganado-${hoy()}.json`,'application/json');S.config.ultimoRespaldo=hoy();saveCfg()};$('#imp').onchange=importar};
 async function importar(ev){const file=ev.target.files[0];if(!file)return;try{const j=JSON.parse(await file.text());if(j.app!=='mi-ganado')throw 0;if(S.fincas.length&&!confirm('Esto reemplazará todos los datos actuales. ¿Continuar?'))return;
- for(const s of STORES)await tx(s,'readwrite',o=>o.clear());for(const s of['fincas','lotes','animales','eventos'])for(const r of j.datos[s]||[])await tx(s,'readwrite',o=>o.put(r));S.config=Object.assign({},CFG0,j.datos.config||{});await saveCfg();await loadAll();toast('Respaldo restaurado');go('#/inicio');route()}catch(e){toast('Archivo de respaldo no válido')}}
+ for(const s of STORES)await tx(s,'readwrite',o=>o.clear());await saveN();for(const s of DATA)for(const r of j.datos[s]||[]){r._s=0;r.mod=r.mod||Date.now();await tx(s,'readwrite',o=>o.put(r))}S.config=Object.assign({},CFG0,j.datos.config||{});delete S.config.id;await saveCfg();await loadAll();toast('Respaldo restaurado');go('#/inicio');route()}catch(e){toast('Archivo de respaldo no válido')}}
 
 /* ================= Inicio ================= */
-(async()=>{try{db=await openDB();await loadAll();if(!S.config.fincaActual&&S.fincas[0])S.config.fincaActual=S.fincas[0].id;if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();route()}catch(e){$('#app').innerHTML=`<div class="card">No se pudo abrir la base de datos del navegador: ${esc(e.message||e)}</div>`}})();
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('sw.js').then(r=>{r.onupdatefound=()=>{const w=r.installing;w&&w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)toast('Nueva versión lista: cierra y abre la app')})}}).catch(()=>{});
+(async()=>{try{db=await openDB();await loadAll();if(!S.config.fincaActual&&S.fincas[0])S.config.fincaActual=S.fincas[0].id;if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
+ if(Sync.activa()){const lib=await Sync.cliente();if(lib){const ses=await Sync.sesion().catch(()=>null);if(!ses)Sync.necesitaLogin=true;else{N.userId=N.userId||ses.user.id;N.email=ses.user.email}}else if(!N.userId)Sync.necesitaLogin=true}
+ route();if(N.userId&&!Sync.necesitaLogin)Sync.ahora()}catch(e){$('#app').innerHTML=`<div class="card">No se pudo abrir la base de datos del navegador: ${esc(e.message||e)}</div>`}})();
 </script>
 </body>
 </html>
