@@ -159,7 +159,7 @@ const TIPOS={
  desparasitacion:{n:'Desparasitación',ic:'🪱',c:[['producto','Producto','text'],['proxima','Próxima aplicación','date'],['costo','Costo (opcional)','number']]},
  tratamiento:{n:'Tratamiento',ic:'💊',c:[['tipoT','Tipo','select',TIPOS_TRAT],['diagnostico','Diagnóstico','text'],['producto','Medicamento','text'],['duracion','Días de tratamiento','number'],['retiro','Días de retiro leche/carne','number'],['costo','Costo (opcional)','number']]},
  mastitis:{n:'Mastitis',ic:'🔴',sexo:'H',c:[['severidad','Severidad','select',SEVERIDAD],['cuartos','Cuartos afectados','text']]},
- lote:{n:'Cambio de lote',ic:'🔀',c:[['destino','Lote o potrero destino','lote']]},
+ lote:{n:'Cambio de lote o finca',ic:'🔀',c:[['destino','Lote o potrero destino','lote']]},
  venta:{n:'Venta',ic:'💰',c:[['comprador','Comprador','text'],['peso','Peso (kg)','number'],['precio','Precio total','number']]},
  muerte:{n:'Muerte',ic:'✝️',c:[['causa','Causa','select',CAUSAS]]},
  nota:{n:'Observación',ic:'📝',c:[]}
@@ -617,25 +617,34 @@ function intervaloPartos(a){const p=evDe(a.id).filter(e=>e.tipo==='parto');if(p.
 function evTxt(e){const d=e.datos||{},t=TIPOS[e.tipo];const p=[];
  if(e.tipo==='leche')p.push(num(litros(e))+' L'+(d.manana&&d.tarde?` (${num(d.manana)} + ${num(d.tarde)})`:''));
  else if(e.tipo==='peso')p.push(num(d.valor)+' kg');
- else if(e.tipo==='lote')p.push('→ '+loteN(d.destino));
+ else if(e.tipo==='lote')p.push((d.fincaOrigen?'Traslado: '+((S.fincas.find(f=>f.id===d.fincaOrigen)||{}).nombre||'otra finca')+' → '+((S.fincas.find(f=>f.id===d.fincaDestino)||{}).nombre||'otra finca')+' · ':'→ ')+(d.destino?loteN(d.destino):'sin lote'));
  else for(const [k,l,ty] of t.c){if(d[k]!=null&&d[k]!=='')p.push((ty==='date'?l+': '+fmtF(d[k]):ty==='number'?l.replace(/ \(.*/,'')+': '+num(d[k]):d[k]))}
  return p.join(' · ')}
 function histHtml(ev){return`<div class="card">${ev.length?ev.slice().reverse().map(e=>`<div class="ev"><div class="d">${fmtF(e.fecha)}</div><div class="sp"><b>${TIPOS[e.tipo]?.ic||''} ${TIPOS[e.tipo]?.n||e.tipo}</b><div class="sub">${esc(evTxt(e))}${e.notas?' — '+esc(e.notas):''}</div></div>${puede('borrar')?`<button class="btn sm sec" data-del="${e.id}" title="Eliminar">✕</button>`:''}</div>`).join(''):'<div class="empty">Sin registros todavía.</div>'}</div>`}
 
+/* ---------- Traslado entre lotes y fincas ---------- */
+const fincasDestino=()=>S.fincas.filter(f=>PERM.registrar.includes(rol(f.id))).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+const opcLotes=(f,val)=>selOpts(S.lotes.filter(l=>l.fincaId===f).sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(l=>[l.id,l.nombre]),val,f===S.config.fincaActual?'Elegir…':'Sin lote / potrero');
+document.addEventListener('change',e=>{if(e.target.matches&&e.target.matches('[data-fdest]')){const l=(e.target.form||document).querySelector('[data-ldest]');if(l)l.innerHTML=opcLotes(e.target.value,'')}});
+const choqueCodigo=(a,f)=>f!==a.fincaId&&S.animales.some(x=>x.fincaId===f&&x.id!==a.id&&x.estado==='activo'&&(x.codigo||'').toLowerCase()===(a.codigo||'').toLowerCase());
+const loteInvalido=d=>!d.destino&&(!d.fincaDestino||d.fincaDestino===S.config.fincaActual);
+async function moverAFinca(a,f){for(const x of S.archivos.filter(x=>x.animalId===a.id&&x.fincaId!==f)){x.fincaId=f;await put('archivos',x)}
+ for(const x of S.tareas.filter(x=>x.animalId===a.id&&!x.hecha&&x.fincaId!==f)){x.fincaId=f;await put('tareas',x)}a.fincaId=f}
 function campoHtml([k,l,ty,op],val){if(ty==='select')return`<div><label>${l}</label><select name="${k}">${selOpts(op,val)}</select></div>`;
- if(ty==='lote')return`<div><label>${l}</label><select name="${k}" required>${selOpts(lotesF().map(x=>[x.id,x.nombre]),val,'Elegir…')}</select></div>`;
+ if(ty==='lote'){const fs=fincasDestino();return`${fs.length>1?`<div><label>Finca destino</label><select name="fincaDestino" data-fdest>${selOpts(fs.map(f=>[f.id,f.nombre+(f.id===S.config.fincaActual?' (esta finca)':'')]),S.config.fincaActual)}</select></div>`:''}<div><label>${l}</label><select name="${k}" data-ldest>${opcLotes(S.config.fincaActual,val)}</select></div>`}
  return`<div><label>${l}</label><input name="${k}" type="${ty}" ${ty==='number'?'step="any" min="0"':''} value="${esc(val)}"></div>`}
 V.evento=(id,tipo)=>{const a=animal(id),t=TIPOS[tipo];if(!a||!t)return go('#/animales');
  $('#app').innerHTML=`<h2>${t.ic} ${t.n}</h2><p class="sub">${esc(nombreA(a))}</p><form class="card" id="fe"><div class="f2"><div><label>Fecha</label><input type="date" name="fecha" value="${hoy()}" max="${hoy()}" required></div>${t.c.filter(c=>c[0]!=='costo'||puede('finanzas')).map(c=>campoHtml(c,'')).join('')}</div><label>Notas</label><textarea name="notas" rows="2"></textarea><div class="row" style="margin-top:14px"><button class="btn">Guardar</button><a class="btn sec" href="#/animal/${id}">Cancelar</a></div></form>`;
- if(tipo==='lote'&&!lotesF().length)$('#fe').insertAdjacentHTML('afterbegin','<p class="tag w">Primero crea lotes en Más → Finca.</p>');
+ if(tipo==='lote'&&!lotesF().length&&fincasDestino().length<2)$('#fe').insertAdjacentHTML('afterbegin','<p class="tag w">Primero crea lotes en Más → Finca.</p>');
  $('#fe').onsubmit=async ev=>{ev.preventDefault();const {fecha,notas,...datos}=formData(ev.target);for(const [k,,ty] of t.c)if(ty==='number'&&datos[k]!==''&&datos[k]!=null)datos[k]=Number(datos[k]);
   if(tipo==='peso'&&!(datos.valor>0))return toast('Ingresa el peso');if(tipo==='leche'&&!(litros({datos})>0))return toast('Ingresa los litros');
-  await registrar(a,tipo,fecha,datos,notas);toast('Registro guardado');go('#/animal/'+id)}};
+  if(tipo==='lote'){if(loteInvalido(datos))return toast('Elegí el lote o potrero destino');if(datos.fincaDestino&&choqueCodigo(a,datos.fincaDestino))return toast('En la finca destino ya hay un animal con el código '+a.codigo+'. Cambiale el código primero.')}
+  const fo=a.fincaId;await registrar(a,tipo,fecha,datos,notas);toast(a.fincaId!==fo?'Animal trasladado a '+(S.fincas.find(f=>f.id===a.fincaId)||{}).nombre:'Registro guardado');go('#/animal/'+id)}};
 async function borrarMovEvento(eid){for(const m of S.movimientos.filter(m=>m.eventoId===eid))await del('movimientos',m.id)}
 async function registrar(a,tipo,fecha,datos,notas){const e={id:uid(),animalId:a.id,fincaId:a.fincaId,tipo,fecha,datos,notas:notas||''};await put('eventos',e);
  if(['vacuna','desparasitacion','tratamiento','servicio'].includes(tipo)&&Number(datos.costo)>0)await put('movimientos',{id:uid(),fincaId:a.fincaId,tipo:'gasto',categoria:tipo==='servicio'?'Reproducción (pajillas, inseminación)':'Sanidad – vacunas y medicamentos',fecha,monto:Number(datos.costo),descripcion:TIPOS[tipo].n+(datos.producto||datos.toro?': '+(datos.producto||datos.toro):'')+' · '+nombreA(a),animalId:a.id,loteId:a.loteId||'',eventoId:e.id});
  if(tipo==='venta'&&Number(datos.precio)>0)await put('movimientos',{id:uid(),fincaId:a.fincaId,tipo:'ingreso',categoria:'Venta de ganado',fecha,monto:Number(datos.precio),cantidad:datos.peso||'',unidad:datos.peso?'kg':'',descripcion:'Venta de '+nombreA(a),tercero:datos.comprador||'',animalId:a.id,eventoId:e.id});
- if(tipo==='lote'&&datos.destino){a.loteId=datos.destino;await put('animales',a)}
+ if(tipo==='lote'){const fd=datos.fincaDestino||a.fincaId;if(fd!==a.fincaId){e.datos.fincaOrigen=a.fincaId;e.datos.fincaDestino=fd;await moverAFinca(a,fd)}else delete e.datos.fincaDestino;await put('eventos',e);a.loteId=datos.destino||'';await put('animales',a)}
  if(tipo==='venta'){a.estado='vendido';a.fechaSalida=fecha;await put('animales',a)}
  if(tipo==='muerte'){a.estado='muerto';a.fechaSalida=fecha;await put('animales',a)}
  if(tipo==='parto'&&datos.sexoCria!=='Sin cría viva'){const r=repro(a);let cod=datos.codigoCria||(a.codigo+'-'+(r.partos));while(S.animales.some(x=>x.fincaId===a.fincaId&&x.codigo===cod))cod+='b';
@@ -660,8 +669,9 @@ V.masivo=(tipo,loteP)=>{if(!tipo){$('#app').innerHTML=`<h2>Registro masivo</h2><
  $('#ml').onchange=e=>{lote=e.target.value;pinta()};pinta();
  $('#mall').onclick=()=>{const cb=[...document.querySelectorAll('#mlst input')];const v=!cb.every(c=>c.checked);cb.forEach(c=>c.checked=v)};
  $('#mok').onclick=async()=>{const sel=[...document.querySelectorAll('#mlst input:checked')].map(c=>c.value);if(!sel.length)return toast('Selecciona al menos un animal');
-  const {notas,costoTotal,...datos}=formData($('#mfm'));for(const [k,,ty] of t.c)if(ty==='number'&&datos[k]!==''&&datos[k]!=null)datos[k]=Number(datos[k]);if(tipo==='lote'&&!datos.destino)return toast('Elige el lote destino');
-  for(const id of sel)await registrar(animal(id),tipo,$('#mf').value,{...datos},notas);
+  const {notas,costoTotal,...datos}=formData($('#mfm'));for(const [k,,ty] of t.c)if(ty==='number'&&datos[k]!==''&&datos[k]!=null)datos[k]=Number(datos[k]);if(tipo==='lote'&&loteInvalido(datos))return toast('Elegí el lote o potrero destino');
+  let saltados=[];for(const id of sel){const an=animal(id);if(tipo==='lote'&&datos.fincaDestino&&choqueCodigo(an,datos.fincaDestino)){saltados.push(an.codigo);continue}await registrar(an,tipo,$('#mf').value,{...datos},notas)}
+  if(saltados.length)alert('No se movieron porque en la finca destino ya hay animales con estos códigos: '+saltados.join(', '));
   if(Number(costoTotal)>0)await put('movimientos',{id:uid(),fincaId:S.config.fincaActual,tipo:'gasto',categoria:'Sanidad – vacunas y medicamentos',fecha:$('#mf').value,monto:Number(costoTotal),cantidad:sel.length,unidad:'animal',descripcion:t.n+' masiva'+(datos.producto?': '+datos.producto:'')+' · '+sel.length+' animales',loteId:lote||''});toast(sel.length+' animales actualizados');go('#/inicio')}};
 
 V.alertas=()=>{const al=alertas();$('#app').innerHTML=`<h2>Alertas (${al.length})</h2>${al.length?al.map(alHtml).join(''):'<div class="card empty">Todo al día. 👌</div>'}<p class="sub">Los días para cada alerta se ajustan en Más → Parámetros.</p>`};
